@@ -71,7 +71,10 @@ app.post('/render', async (req, res) => {
       return h + ':' + String(m).padStart(2, '0') + ':' + String(sc).padStart(2, '0') + '.' + String(cs).padStart(2, '0');
     }
 
-    // 7. Gera ASS com karaoke - frase completa, palavra ativa em amarelo
+    // 7. Gera ASS — frase estatica, palavra ativa em amarelo sem piscar
+    // Estrategia: cada linha dura o tempo da palavra ativa
+    // A frase inteira aparece, palavra ativa em amarelo, resto em branco
+    // Layer crescente por palavra para evitar sobreposicao
     let assContent = '[Script Info]\n';
     assContent += 'ScriptType: v4.00+\n';
     assContent += 'PlayResX: 1080\n';
@@ -83,20 +86,28 @@ app.post('/render', async (req, res) => {
     assContent += 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n';
 
     for (const phraseWords of phrases) {
+      const phraseStart = phraseWords[0].start;
+      const phraseEnd = phraseWords[phraseWords.length - 1].end;
+
       for (let wi = 0; wi < phraseWords.length; wi++) {
         const activeWord = phraseWords[wi];
-        const lineStart = ft(activeWord.start);
-        const lineEnd = ft(activeWord.end);
+        // Cada linha fica visivel do inicio da palavra ativa ate o fim
+        // mas a frase inteira aparece — isso evita o piscar
+        const lineStart = ft(wi === 0 ? phraseStart : phraseWords[wi].start);
+        const lineEnd = ft(wi === phraseWords.length - 1 ? phraseEnd : phraseWords[wi + 1].start);
+
         let lineText = '';
         for (let wj = 0; wj < phraseWords.length; wj++) {
           const word = phraseWords[wj].word.trim();
           if (wj === wi) {
+            // Palavra ativa em amarelo (BGR)
             lineText += '{\\c&H0000FFFF&}' + word + '{\\c&H00FFFFFF&}';
           } else {
             lineText += word;
           }
           if (wj < phraseWords.length - 1) lineText += ' ';
         }
+
         assContent += 'Dialogue: 0,' + lineStart + ',' + lineEnd + ',Default,,0,0,0,,' + lineText + '\n';
       }
     }
@@ -120,9 +131,9 @@ app.post('/render', async (req, res) => {
     const concatPath = path.join(jobDir, 'concat.mp4');
     execSync('ffmpeg -f concat -safe 0 -i ' + listPath + ' -c copy ' + concatPath, { timeout: 120000 });
 
-    // 10. Aplica audio + legenda karaoke
+    // 10. Aplica audio + legenda — sem -shortest para nao cortar o audio
     const outputPath = path.join(OUTPUT_DIR, jobId + '.mp4');
-    execSync('ffmpeg -i ' + concatPath + ' -i ' + audioPath + ' -vf ass=' + assPath + ' -c:v libx264 -c:a aac -shortest ' + outputPath, { timeout: 300000 });
+    execSync('ffmpeg -i ' + concatPath + ' -i ' + audioPath + ' -vf ass=' + assPath + ' -c:v libx264 -c:a aac ' + outputPath, { timeout: 300000 });
 
     // 11. Limpa temporarios
     await fs.remove(jobDir);
