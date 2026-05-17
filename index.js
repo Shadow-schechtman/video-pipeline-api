@@ -30,21 +30,23 @@ app.post('/render', async (req, res) => {
 
   try {
     await fs.ensureDir(jobDir);
-    const { audio_url, video_clips } = req.body;
+    const { audio_url, video_clips, language } = req.body;
+
+    // Define idioma para o WhisperX — default pt
+    const whisperLang = language ? language.substring(0, 2).toLowerCase() : 'pt';
 
     // 1. Baixa o audio
     const audioPath = path.join(jobDir, 'audio.mp3');
     await downloadFile(audio_url, audioPath);
 
-    // 2. Roda WhisperX
-    const whisperCmd = '/opt/whisperx-env/bin/whisperx ' + audioPath + ' --model small --language pt --output_format json --output_dir ' + jobDir;
+    // 2. Roda WhisperX com idioma dinamico
+    const whisperCmd = '/opt/whisperx-env/bin/whisperx ' + audioPath + ' --model small --language ' + whisperLang + ' --output_format json --output_dir ' + jobDir;
     execSync(whisperCmd, { timeout: 120000 });
 
     // 3. Le o JSON do WhisperX
     const whisperOutput = JSON.parse(fs.readFileSync(path.join(jobDir, 'audio.json'), 'utf8'));
 
     // 4. Usa segmentos naturais do WhisperX
-    // Cada segmento eh uma frase natural — se for muito longo, divide em ate 5 palavras
     const MAX_WORDS = 5;
     const phrases = [];
 
@@ -53,10 +55,8 @@ app.post('/render', async (req, res) => {
         if (!seg.words || seg.words.length === 0) continue;
 
         if (seg.words.length <= MAX_WORDS) {
-          // Segmento curto — usa como frase unica
           phrases.push(seg.words);
         } else {
-          // Segmento longo — divide em grupos de MAX_WORDS
           for (let i = 0; i < seg.words.length; i += MAX_WORDS) {
             phrases.push(seg.words.slice(i, i + MAX_WORDS));
           }
@@ -121,7 +121,7 @@ app.post('/render', async (req, res) => {
       const clipPath = path.join(jobDir, 'clip_' + i + '.mp4');
       const trimmedPath = path.join(jobDir, 'trimmed_' + i + '.mp4');
       await downloadFile(video_clips[i].url, clipPath);
-      execSync('ffmpeg -i ' + clipPath + ' -t ' + video_clips[i].duration + ' -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black" -c:v libx264 -c:a aac ' + trimmedPath, { timeout: 60000 });
+      execSync('ffmpeg -i ' + clipPath + ' -t ' + video_clips[i].duration + ' -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,fps=30" -c:v libx264 -c:a aac ' + trimmedPath, { timeout: 60000 });
       listContent += "file '" + trimmedPath + "'\n";
     }
     fs.writeFileSync(listPath, listContent);
