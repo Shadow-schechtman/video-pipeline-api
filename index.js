@@ -71,14 +71,14 @@ app.post('/render', async (req, res) => {
       return h + ':' + String(m).padStart(2, '0') + ':' + String(sc).padStart(2, '0') + '.' + String(cs).padStart(2, '0');
     }
 
-    // 7. Gera ASS com karaoke
+    // 7. Gera ASS com karaoke - scale + cor + bold na palavra ativa
     let assContent = '[Script Info]\n';
     assContent += 'ScriptType: v4.00+\n';
     assContent += 'PlayResX: 1080\n';
     assContent += 'PlayResY: 1920\n\n';
     assContent += '[V4+ Styles]\n';
     assContent += 'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n';
-    assContent += 'Style: Default,Arial,60,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,3,0,2,10,10,150,1\n\n';
+    assContent += 'Style: Default,Arial,55,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,3,0,2,10,10,150,1\n\n';
     assContent += '[Events]\n';
     assContent += 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n';
 
@@ -95,7 +95,8 @@ app.post('/render', async (req, res) => {
         for (let wj = 0; wj < phraseWords.length; wj++) {
           const word = phraseWords[wj].word.trim();
           if (wj === wi) {
-            lineText += '{\\c&H0000FFFF&}' + word + '{\\c&H00FFFFFF&}';
+            // Palavra ativa: amarelo + bold + scale 120%
+            lineText += '{\\c&H0000FFFF&\\b1\\fscx120\\fscy120}' + word + '{\\c&H00FFFFFF&\\b1\\fscx100\\fscy100}';
           } else {
             lineText += word;
           }
@@ -115,7 +116,8 @@ app.post('/render', async (req, res) => {
       const clipPath = path.join(jobDir, 'clip_' + i + '.mp4');
       const trimmedPath = path.join(jobDir, 'trimmed_' + i + '.mp4');
       await downloadFile(video_clips[i].url, clipPath);
-      execSync('ffmpeg -i ' + clipPath + ' -t ' + video_clips[i].duration + ' -c copy ' + trimmedPath, { timeout: 60000 });
+      // Corta o clip e mantem resolucao original sem zoom
+      execSync('ffmpeg -i ' + clipPath + ' -t ' + video_clips[i].duration + ' -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black" -c:v libx264 -c:a aac ' + trimmedPath, { timeout: 60000 });
       listContent += "file '" + trimmedPath + "'\n";
     }
     fs.writeFileSync(listPath, listContent);
@@ -124,15 +126,11 @@ app.post('/render', async (req, res) => {
     const concatPath = path.join(jobDir, 'concat.mp4');
     execSync('ffmpeg -f concat -safe 0 -i ' + listPath + ' -c copy ' + concatPath, { timeout: 120000 });
 
-    // 10. Junta video + audio primeiro (loop no video para cobrir duracao do audio)
-    const videoWithAudioPath = path.join(jobDir, 'video_audio.mp4');
-    execSync('ffmpeg -stream_loop -1 -i ' + concatPath + ' -i ' + audioPath + ' -map 0:v -map 1:a -c:v copy -c:a aac -shortest ' + videoWithAudioPath, { timeout: 300000 });
-
-    // 11. Aplica legenda karaoke no video com audio
+    // 10. Aplica audio + legenda karaoke com loop no video para cobrir duracao do audio
     const outputPath = path.join(OUTPUT_DIR, jobId + '.mp4');
-    execSync('ffmpeg -i ' + videoWithAudioPath + ' -vf ass=' + assPath + ' -map 0:v -map 0:a -c:v libx264 -c:a aac ' + outputPath, { timeout: 300000 });
+    execSync('ffmpeg -stream_loop -1 -i ' + concatPath + ' -i ' + audioPath + ' -map 0:v -map 1:a -vf ass=' + assPath + ' -c:v libx264 -c:a aac -shortest ' + outputPath, { timeout: 300000 });
 
-    // 12. Limpa temporarios
+    // 11. Limpa temporarios
     await fs.remove(jobDir);
 
     res.json({ success: true, output_url: 'http://178.104.143.185:3000/output/' + jobId + '.mp4' });
