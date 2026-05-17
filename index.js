@@ -130,7 +130,7 @@ app.post('/render', async (req, res) => {
 
     // 11. Aplica legenda karaoke no video com audio
     const outputPath = path.join(OUTPUT_DIR, jobId + '.mp4');
-    execSync('ffmpeg -i ' + videoWithAudioPath + ' -vf ass=' + assPath + ' -c:v libx264 -c:a copy ' + outputPath, { timeout: 300000 });
+    execSync('ffmpeg -i ' + videoWithAudioPath + ' -vf ass=' + assPath + ' -map 0:v -map 0:a -c:v libx264 -c:a aac ' + outputPath, { timeout: 300000 });
 
     // 12. Limpa temporarios
     await fs.remove(jobDir);
