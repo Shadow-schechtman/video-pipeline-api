@@ -71,10 +71,7 @@ app.post('/render', async (req, res) => {
       return h + ':' + String(m).padStart(2, '0') + ':' + String(sc).padStart(2, '0') + '.' + String(cs).padStart(2, '0');
     }
 
-    // 7. Gera ASS — frase estatica, palavra ativa em amarelo sem piscar
-    // Estrategia: cada linha dura o tempo da palavra ativa
-    // A frase inteira aparece, palavra ativa em amarelo, resto em branco
-    // Layer crescente por palavra para evitar sobreposicao
+    // 7. Gera ASS com karaoke
     let assContent = '[Script Info]\n';
     assContent += 'ScriptType: v4.00+\n';
     assContent += 'PlayResX: 1080\n';
@@ -91,8 +88,6 @@ app.post('/render', async (req, res) => {
 
       for (let wi = 0; wi < phraseWords.length; wi++) {
         const activeWord = phraseWords[wi];
-        // Cada linha fica visivel do inicio da palavra ativa ate o fim
-        // mas a frase inteira aparece — isso evita o piscar
         const lineStart = ft(wi === 0 ? phraseStart : phraseWords[wi].start);
         const lineEnd = ft(wi === phraseWords.length - 1 ? phraseEnd : phraseWords[wi + 1].start);
 
@@ -100,14 +95,12 @@ app.post('/render', async (req, res) => {
         for (let wj = 0; wj < phraseWords.length; wj++) {
           const word = phraseWords[wj].word.trim();
           if (wj === wi) {
-            // Palavra ativa em amarelo (BGR)
             lineText += '{\\c&H0000FFFF&}' + word + '{\\c&H00FFFFFF&}';
           } else {
             lineText += word;
           }
           if (wj < phraseWords.length - 1) lineText += ' ';
         }
-
         assContent += 'Dialogue: 0,' + lineStart + ',' + lineEnd + ',Default,,0,0,0,,' + lineText + '\n';
       }
     }
@@ -131,11 +124,15 @@ app.post('/render', async (req, res) => {
     const concatPath = path.join(jobDir, 'concat.mp4');
     execSync('ffmpeg -f concat -safe 0 -i ' + listPath + ' -c copy ' + concatPath, { timeout: 120000 });
 
-    // 10. Aplica audio + legenda — sem -shortest para nao cortar o audio
-    const outputPath = path.join(OUTPUT_DIR, jobId + '.mp4');
-    execSync('ffmpeg -i ' + concatPath + ' -i ' + audioPath + ' -vf ass=' + assPath + ' -c:v libx264 -c:a aac ' + outputPath, { timeout: 300000 });
+    // 10. Junta video + audio primeiro (loop no video para cobrir duracao do audio)
+    const videoWithAudioPath = path.join(jobDir, 'video_audio.mp4');
+    execSync('ffmpeg -stream_loop -1 -i ' + concatPath + ' -i ' + audioPath + ' -map 0:v -map 1:a -c:v copy -c:a aac -shortest ' + videoWithAudioPath, { timeout: 300000 });
 
-    // 11. Limpa temporarios
+    // 11. Aplica legenda karaoke no video com audio
+    const outputPath = path.join(OUTPUT_DIR, jobId + '.mp4');
+    execSync('ffmpeg -i ' + videoWithAudioPath + ' -vf ass=' + assPath + ' -c:v libx264 -c:a copy ' + outputPath, { timeout: 300000 });
+
+    // 12. Limpa temporarios
     await fs.remove(jobDir);
 
     res.json({ success: true, output_url: 'http://178.104.143.185:3000/output/' + jobId + '.mp4' });
