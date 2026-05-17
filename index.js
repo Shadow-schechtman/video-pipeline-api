@@ -98,7 +98,7 @@ app.post('/render', async (req, res) => {
           const word = phraseWords[wj].word.trim();
           if (wj === wi) {
             // Palavra ativa: amarelo + bold
-            lineText += '{\\c&H0000E5FF&\\b1}' + word + '{\\c&H00FFFFFF&\\b1}';
+            lineText += '{\\c&H0000CCFF&\\b1}' + word + '{\\c&H00FFFFFF&\\b1}';
           } else {
             lineText += '{\\c&H00FFFFFF&\\b1}' + word + '{\\r}';
           }
