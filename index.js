@@ -43,26 +43,28 @@ app.post('/render', async (req, res) => {
     // 3. Le o JSON do WhisperX
     const whisperOutput = JSON.parse(fs.readFileSync(path.join(jobDir, 'audio.json'), 'utf8'));
 
-    // 4. Extrai palavras com timestamps
-    const words = [];
+    // 4. Usa segmentos naturais do WhisperX
+    // Cada segmento eh uma frase natural — se for muito longo, divide em ate 5 palavras
+    const MAX_WORDS = 5;
+    const phrases = [];
+
     if (whisperOutput.segments) {
       for (const seg of whisperOutput.segments) {
-        if (seg.words) {
-          for (const w of seg.words) {
-            words.push(w);
+        if (!seg.words || seg.words.length === 0) continue;
+
+        if (seg.words.length <= MAX_WORDS) {
+          // Segmento curto — usa como frase unica
+          phrases.push(seg.words);
+        } else {
+          // Segmento longo — divide em grupos de MAX_WORDS
+          for (let i = 0; i < seg.words.length; i += MAX_WORDS) {
+            phrases.push(seg.words.slice(i, i + MAX_WORDS));
           }
         }
       }
     }
 
-    // 5. Agrupa palavras em frases de ate 4 palavras (2 linhas de 2)
-    const WORDS_PER_PHRASE = 4;
-    const phrases = [];
-    for (let i = 0; i < words.length; i += WORDS_PER_PHRASE) {
-      phrases.push(words.slice(i, i + WORDS_PER_PHRASE));
-    }
-
-    // 6. Funcao de formato de tempo ASS
+    // 5. Funcao de formato de tempo ASS
     function ft(s) {
       const h = Math.floor(s / 3600);
       const m = Math.floor((s % 3600) / 60);
@@ -71,14 +73,13 @@ app.post('/render', async (req, res) => {
       return h + ':' + String(m).padStart(2, '0') + ':' + String(sc).padStart(2, '0') + '.' + String(cs).padStart(2, '0');
     }
 
-    // 7. Gera ASS estilo viral - fonte grande, outline forte, palavra ativa amarela
+    // 6. Gera ASS estilo viral
     let assContent = '[Script Info]\n';
     assContent += 'ScriptType: v4.00+\n';
     assContent += 'PlayResX: 1080\n';
     assContent += 'PlayResY: 1920\n\n';
     assContent += '[V4+ Styles]\n';
     assContent += 'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n';
-    // Fonte 75px, branca, outline preta espessa (5), bold, alinhamento centralizado embaixo
     assContent += 'Style: Default,Arial,75,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,5,2,2,60,60,180,1\n\n';
     assContent += '[Events]\n';
     assContent += 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n';
@@ -92,17 +93,14 @@ app.post('/render', async (req, res) => {
         const lineStart = ft(wi === 0 ? phraseStart : phraseWords[wi].start);
         const lineEnd = ft(wi === phraseWords.length - 1 ? phraseEnd : phraseWords[wi + 1].start);
 
-        // Monta linha com quebra apos 2 palavras para ficar em 2 linhas
         let lineText = '';
         for (let wj = 0; wj < phraseWords.length; wj++) {
           const word = phraseWords[wj].word.trim();
           if (wj === wi) {
-            // Palavra ativa: amarelo + bold
             lineText += '{\\c&H0000CCFF&\\b1}' + word + '{\\c&H00FFFFFF&\\b1}';
           } else {
             lineText += '{\\c&H00FFFFFF&\\b1}' + word + '{\\r}';
           }
-          // Quebra de linha apos a 2a palavra
           if (wj === 1 && phraseWords.length > 2) {
             lineText += '\\N';
           } else if (wj < phraseWords.length - 1) {
@@ -116,7 +114,7 @@ app.post('/render', async (req, res) => {
     const assPath = path.join(jobDir, 'subtitles.ass');
     fs.writeFileSync(assPath, assContent);
 
-    // 8. Baixa e corta videos na duracao exata
+    // 7. Baixa e corta videos na duracao exata
     const listPath = path.join(jobDir, 'videos.txt');
     let listContent = '';
     for (let i = 0; i < video_clips.length; i++) {
@@ -128,15 +126,15 @@ app.post('/render', async (req, res) => {
     }
     fs.writeFileSync(listPath, listContent);
 
-    // 9. Concatena videos
+    // 8. Concatena videos
     const concatPath = path.join(jobDir, 'concat.mp4');
     execSync('ffmpeg -f concat -safe 0 -i ' + listPath + ' -c copy ' + concatPath, { timeout: 120000 });
 
-    // 10. Aplica audio + legenda karaoke
+    // 9. Aplica audio + legenda karaoke
     const outputPath = path.join(OUTPUT_DIR, jobId + '.mp4');
     execSync('ffmpeg -stream_loop -1 -i ' + concatPath + ' -i ' + audioPath + ' -map 0:v -map 1:a -vf ass=' + assPath + ' -c:v libx264 -c:a aac -shortest ' + outputPath, { timeout: 300000 });
 
-    // 11. Limpa temporarios
+    // 10. Limpa temporarios
     await fs.remove(jobDir);
 
     res.json({ success: true, output_url: 'http://178.104.143.185:3000/output/' + jobId + '.mp4' });
