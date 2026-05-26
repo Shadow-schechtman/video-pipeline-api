@@ -20,6 +20,17 @@ async function downloadFile(url, dest) {
   });
 }
 
+// Converte cor hex (#RRGGBB) para formato ASS (&H00BBGGRR&)
+function hexToAss(hex) {
+  if (!hex || typeof hex !== 'string') return '&H0000CCFF&'; // fallback laranja
+  const clean = hex.replace('#', '').trim();
+  if (clean.length !== 6) return '&H0000CCFF&';
+  const r = clean.substring(0, 2);
+  const g = clean.substring(2, 4);
+  const b = clean.substring(4, 6);
+  return '&H00' + b.toUpperCase() + g.toUpperCase() + r.toUpperCase() + '&';
+}
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
@@ -30,7 +41,9 @@ app.post('/render', async (req, res) => {
 
   try {
     await fs.ensureDir(jobDir);
-    const { audio_url, video_clips, language } = req.body;
+    const { audio_url, video_clips, language, cor_legenda } = req.body;
+    const assColor = hexToAss(cor_legenda);
+    console.log('[render] jobId:', jobId, '| cor_legenda recebida:', cor_legenda, '| ASS:', assColor);
 
     // Define idioma para o WhisperX — default pt
     const whisperLang = language ? language.substring(0, 2).toLowerCase() : 'pt';
@@ -97,7 +110,7 @@ app.post('/render', async (req, res) => {
         for (let wj = 0; wj < phraseWords.length; wj++) {
           const word = phraseWords[wj].word.trim();
           if (wj === wi) {
-            lineText += '{\\c&H0000CCFF&\\b1}' + word + '{\\c&H00FFFFFF&\\b1}';
+            lineText += '{\\c' + assColor + '\\b1}' + word + '{\\c&H00FFFFFF&\\b1}';
           } else {
             lineText += '{\\c&H00FFFFFF&\\b1}' + word + '{\\r}';
           }
