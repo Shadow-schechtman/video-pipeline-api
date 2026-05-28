@@ -158,6 +158,21 @@ app.post('/render', async (req, res) => {
   }
 });
 
+// Rota de download forcado (Content-Disposition: attachment)
+// Forca o navegador a baixar o video em vez de abrir o player
+app.get('/download/:filename', (req, res) => {
+  const filename = req.params.filename;
+  // Seguranca: bloqueia path traversal
+  if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+    return res.status(400).json({ error: 'Invalid filename' });
+  }
+  const filePath = path.join(OUTPUT_DIR, filename);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+  res.download(filePath, filename);
+});
+
 app.use('/output', express.static(OUTPUT_DIR));
 
 app.listen(3000, () => {
