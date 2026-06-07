@@ -18,7 +18,7 @@ const OUTPUT_DIR = '/opt/video-pipeline/output';
 // em uma linha. O canal e identificado pela cor da legenda (unica
 // por canal), entao nao depende de mudancas nos workflows do n8n.
 // ============================================================
-const IDENTIDADE_VISUAL = true;
+const IDENTIDADE_VISUAL = false;
 
 const IDENTIDADES = {
   '#00C2FF': { // AI Radar — limpo, tech, frio
