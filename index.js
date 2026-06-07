@@ -39,15 +39,9 @@ function getEndCard(corLegenda) {
 }
 
 // Monta os filtros de end card para o -vf. Retorna '' se nao aplicavel.
-function buildEndCardVf(corLegenda, audioPath) {
+function buildEndCardVf(corLegenda, dur) {
   const ec = getEndCard(corLegenda);
   if (!ec) return '';
-  let dur = 0;
-  try {
-    dur = parseFloat(execSync('ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 ' + audioPath).toString().trim());
-  } catch (e) {
-    return ''; // sem duracao confiavel, nao arrisca o render
-  }
   if (!dur || isNaN(dur)) return '';
   const start = Math.max(0, dur - END_CARD_DUR).toFixed(2);
   const en = "enable='gte(t," + start + ")'";
@@ -99,6 +93,16 @@ app.post('/render', async (req, res) => {
     const audioPath = path.join(jobDir, 'audio.mp3');
     await downloadFile(audio_url, audioPath);
 
+    // Duracao do audio (= duracao final do video por causa do -shortest).
+    // Usada pelo end card e para esconder a legenda na janela do card.
+    let audioDur = 0;
+    try {
+      audioDur = parseFloat(execSync('ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 ' + audioPath).toString().trim());
+    } catch (e) { audioDur = 0; }
+    const ecAtivo = !!getEndCard(cor_legenda) && audioDur > 0;
+    // Acima desse tempo a legenda nao e desenhada (so quando ha end card).
+    const legendaCutoff = ecAtivo ? (audioDur - END_CARD_DUR) : Infinity;
+
     // 2. Roda WhisperX com idioma dinamico
     const whisperCmd = '/opt/whisperx-env/bin/whisperx ' + audioPath + ' --model small --language ' + whisperLang + ' --output_format json --output_dir ' + jobDir;
     execSync(whisperCmd, { timeout: 120000 });
@@ -148,6 +152,9 @@ app.post('/render', async (req, res) => {
       const phraseStart = phraseWords[0].start;
       const phraseEnd = phraseWords[phraseWords.length - 1].end;
 
+      // Esconde a legenda durante o end card (evita CTA duplicado/fantasma).
+      if (phraseEnd > legendaCutoff) continue;
+
       for (let wi = 0; wi < phraseWords.length; wi++) {
         const activeWord = phraseWords[wi];
         const lineStart = ft(wi === 0 ? phraseStart : phraseWords[wi].start);
@@ -195,7 +202,7 @@ app.post('/render', async (req, res) => {
 
     // 9. Aplica audio + legenda karaoke
     const outputPath = path.join(OUTPUT_DIR, jobId + '.mp4');
-    const endCardVf = buildEndCardVf(cor_legenda, audioPath);
+    const endCardVf = buildEndCardVf(cor_legenda, audioDur);
     execSync('ffmpeg -stream_loop -1 -i ' + concatPath + ' -i ' + audioPath + ' -map 0:v -map 1:a -vf "ass=' + assPath + endCardVf + '" -c:v libx264 -c:a aac -shortest ' + outputPath, { timeout: 300000 });
 
     // 10. Limpa temporarios
