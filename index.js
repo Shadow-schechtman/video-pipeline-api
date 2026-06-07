@@ -11,38 +11,50 @@ const WORK_DIR = '/opt/video-pipeline/temp';
 const OUTPUT_DIR = '/opt/video-pipeline/output';
 
 // ============================================================
-// IDENTIDADE VISUAL POR CANAL (feature flag)
+// END CARD POR CANAL (feature flag)
 // ------------------------------------------------------------
-// Trocar IDENTIDADE_VISUAL para false reverte TUDO para o visual
-// padrao (fonte/contorno atuais, sem grade de cor). Reversao total
-// em uma linha. O canal e identificado pela cor da legenda (unica
-// por canal), entao nao depende de mudancas nos workflows do n8n.
+// Nos ultimos ~1,5s o video escurece e aparece o nome do canal +
+// CTA neutro (sem "follow"/"subscribe", funciona nas 3 plataformas).
+// Trocar END_CARD para false desliga em todos os canais (reversao
+// total em uma linha). O canal e identificado pela cor da legenda,
+// entao nao depende de mudancas nos workflows do n8n.
 // ============================================================
-const IDENTIDADE_VISUAL = false;
+const END_CARD = true;
 
-const IDENTIDADES = {
-  '#00C2FF': { // AI Radar — limpo, tech, frio
-    fonte: 'Arial',
-    outline: 5,
-    shadow: 2,
-    grade: 'eq=contrast=1.06:saturation=0.94:gamma_b=1.04'
-  },
-  '#FFD400': { // Hidden Facts — pesado, dramatico, escuro
-    fonte: 'Anton',
-    outline: 6,
-    shadow: 3,
-    grade: 'eq=contrast=1.16:saturation=1.05:brightness=-0.04,vignette=PI/5'
-  }
+// Fonte de display do end card (instalada na VPS). Independe da fonte
+// das legendas — usada so no card final.
+const END_CARD_FONT = '/usr/share/fonts/truetype/custom/Anton-Regular.ttf';
+const END_CARD_DUR = 1.5; // segundos de exibicao no fim
+
+// Cor em formato ffmpeg (0xRRGGBB). Chave = cor_legenda (igual a planilha).
+const END_CARDS = {
+  '#00C2FF': { nome: 'AI Radar',     cta: 'More AI tools daily', cor: '0x00C2FF' },
+  '#FFD400': { nome: 'Hidden Facts', cta: 'More facts daily',    cor: '0xFFD400' }
 };
 
-// Preset padrao: usado quando a flag esta off OU a cor nao esta mapeada.
-// Mantem exatamente o visual atual.
-const IDENTIDADE_PADRAO = { fonte: 'Arial', outline: 5, shadow: 2, grade: '' };
-
-function getIdentidade(corLegenda) {
-  if (!IDENTIDADE_VISUAL) return IDENTIDADE_PADRAO;
+function getEndCard(corLegenda) {
+  if (!END_CARD) return null;
   const key = (corLegenda || '').toUpperCase().trim();
-  return IDENTIDADES[key] || IDENTIDADE_PADRAO;
+  return END_CARDS[key] || null;
+}
+
+// Monta os filtros de end card para o -vf. Retorna '' se nao aplicavel.
+function buildEndCardVf(corLegenda, audioPath) {
+  const ec = getEndCard(corLegenda);
+  if (!ec) return '';
+  let dur = 0;
+  try {
+    dur = parseFloat(execSync('ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 ' + audioPath).toString().trim());
+  } catch (e) {
+    return ''; // sem duracao confiavel, nao arrisca o render
+  }
+  if (!dur || isNaN(dur)) return '';
+  const start = Math.max(0, dur - END_CARD_DUR).toFixed(2);
+  const en = "enable='gte(t," + start + ")'";
+  return ',drawbox=x=0:y=0:w=iw:h=ih:color=black@0.65:t=fill:' + en +
+         ',drawbox=x=(w-160)/2:y=720:w=160:h=8:color=' + ec.cor + ':t=fill:' + en +
+         ',drawtext=fontfile=' + END_CARD_FONT + ":text='" + ec.nome + "':fontcolor=white:fontsize=110:x=(w-text_w)/2:y=800:" + en +
+         ',drawtext=fontfile=' + END_CARD_FONT + ":text='" + ec.cta + "':fontcolor=" + ec.cor + ':fontsize=46:x=(w-text_w)/2:y=965:' + en;
 }
 
 async function downloadFile(url, dest) {
@@ -78,8 +90,7 @@ app.post('/render', async (req, res) => {
     await fs.ensureDir(jobDir);
     const { audio_url, video_clips, language, cor_legenda } = req.body;
     const assColor = hexToAss(cor_legenda);
-    const identidade = getIdentidade(cor_legenda);
-    console.log('[render] jobId:', jobId, '| cor_legenda recebida:', cor_legenda, '| ASS:', assColor, '| fonte:', identidade.fonte, '| grade:', identidade.grade || '(nenhum)');
+    console.log('[render] jobId:', jobId, '| cor_legenda recebida:', cor_legenda, '| ASS:', assColor, '| end card:', getEndCard(cor_legenda) ? getEndCard(cor_legenda).nome : '(nenhum)');
 
     // Define idioma para o WhisperX — default pt
     const whisperLang = language ? language.substring(0, 2).toLowerCase() : 'pt';
@@ -129,7 +140,7 @@ app.post('/render', async (req, res) => {
     assContent += 'PlayResY: 1920\n\n';
     assContent += '[V4+ Styles]\n';
     assContent += 'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n';
-    assContent += 'Style: Default,' + identidade.fonte + ',98,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,' + identidade.outline + ',' + identidade.shadow + ',2,60,60,615,1\n\n';
+    assContent += 'Style: Default,Arial,98,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,5,2,2,60,60,615,1\n\n';
     assContent += '[Events]\n';
     assContent += 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n';
 
@@ -184,8 +195,8 @@ app.post('/render', async (req, res) => {
 
     // 9. Aplica audio + legenda karaoke
     const outputPath = path.join(OUTPUT_DIR, jobId + '.mp4');
-    const vfGrade = identidade.grade ? identidade.grade + ',' : '';
-    execSync('ffmpeg -stream_loop -1 -i ' + concatPath + ' -i ' + audioPath + ' -map 0:v -map 1:a -vf "' + vfGrade + 'ass=' + assPath + '" -c:v libx264 -c:a aac -shortest ' + outputPath, { timeout: 300000 });
+    const endCardVf = buildEndCardVf(cor_legenda, audioPath);
+    execSync('ffmpeg -stream_loop -1 -i ' + concatPath + ' -i ' + audioPath + ' -map 0:v -map 1:a -vf "ass=' + assPath + endCardVf + '" -c:v libx264 -c:a aac -shortest ' + outputPath, { timeout: 300000 });
 
     // 10. Limpa temporarios
     await fs.remove(jobDir);
