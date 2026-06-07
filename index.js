@@ -128,13 +128,16 @@ app.post('/render', async (req, res) => {
     fs.writeFileSync(assPath, assContent);
 
     // 7. Baixa e corta videos na duracao exata
+    // FIX: trim gera clipes SO-VIDEO (-map 0:v -an) para o concat -c copy nao quebrar
+    // quando o Pexels devolve clipes com layouts de stream heterogeneos (audio / data / nenhum).
+    // O audio da narracao e adicionado depois, no passo 9.
     const listPath = path.join(jobDir, 'videos.txt');
     let listContent = '';
     for (let i = 0; i < video_clips.length; i++) {
       const clipPath = path.join(jobDir, 'clip_' + i + '.mp4');
       const trimmedPath = path.join(jobDir, 'trimmed_' + i + '.mp4');
       await downloadFile(video_clips[i].url, clipPath);
-      execSync('ffmpeg -i ' + clipPath + ' -t ' + video_clips[i].duration + ' -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,fps=30" -c:v libx264 -c:a aac ' + trimmedPath, { timeout: 60000 });
+      execSync('ffmpeg -i ' + clipPath + ' -t ' + video_clips[i].duration + ' -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,fps=30" -map 0:v -an -c:v libx264 ' + trimmedPath, { timeout: 60000 });
       listContent += "file '" + trimmedPath + "'\n";
     }
     fs.writeFileSync(listPath, listContent);
