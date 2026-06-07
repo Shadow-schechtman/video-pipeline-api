@@ -51,6 +51,25 @@ function buildEndCardVf(corLegenda, dur) {
          ',drawtext=fontfile=' + END_CARD_FONT + ":text='" + ec.cta + "':fontcolor=" + ec.cor + ':fontsize=46:x=(w-text_w)/2:y=965:' + en;
 }
 
+// ============================================================
+// BRAND BUG (feature flag)
+// ------------------------------------------------------------
+// Nome do canal, pequeno, no canto superior esquerdo, nos primeiros
+// segundos — pra quem sai cedo ja ter visto a marca, sem atrasar o
+// hook. Reaproveita nome/cor de END_CARDS. false desliga.
+// ============================================================
+const BRAND_BUG = true;
+const BRAND_BUG_DUR = 3.0; // segundos no inicio
+
+function buildBrandBugVf(corLegenda) {
+  if (!BRAND_BUG) return '';
+  const key = (corLegenda || '').toUpperCase().trim();
+  const ec = END_CARDS[key];
+  if (!ec) return '';
+  const en = "enable='lte(t," + BRAND_BUG_DUR.toFixed(1) + ")'";
+  return ',drawtext=fontfile=' + END_CARD_FONT + ":text='" + ec.nome + "':fontcolor=" + ec.cor + ':fontsize=44:box=1:boxcolor=black@0.5:boxborderw=18:x=48:y=90:' + en;
+}
+
 async function downloadFile(url, dest) {
   const response = await axios({ url, responseType: 'stream' });
   const writer = fs.createWriteStream(dest);
@@ -203,7 +222,8 @@ app.post('/render', async (req, res) => {
     // 9. Aplica audio + legenda karaoke
     const outputPath = path.join(OUTPUT_DIR, jobId + '.mp4');
     const endCardVf = buildEndCardVf(cor_legenda, audioDur);
-    execSync('ffmpeg -stream_loop -1 -i ' + concatPath + ' -i ' + audioPath + ' -map 0:v -map 1:a -vf "ass=' + assPath + endCardVf + '" -c:v libx264 -c:a aac -shortest ' + outputPath, { timeout: 300000 });
+    const brandBugVf = buildBrandBugVf(cor_legenda);
+    execSync('ffmpeg -stream_loop -1 -i ' + concatPath + ' -i ' + audioPath + ' -map 0:v -map 1:a -vf "ass=' + assPath + endCardVf + brandBugVf + '" -c:v libx264 -c:a aac -shortest ' + outputPath, { timeout: 300000 });
 
     // 10. Limpa temporarios
     await fs.remove(jobDir);
