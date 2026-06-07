@@ -10,6 +10,41 @@ app.use(express.json());
 const WORK_DIR = '/opt/video-pipeline/temp';
 const OUTPUT_DIR = '/opt/video-pipeline/output';
 
+// ============================================================
+// IDENTIDADE VISUAL POR CANAL (feature flag)
+// ------------------------------------------------------------
+// Trocar IDENTIDADE_VISUAL para false reverte TUDO para o visual
+// padrao (fonte/contorno atuais, sem grade de cor). Reversao total
+// em uma linha. O canal e identificado pela cor da legenda (unica
+// por canal), entao nao depende de mudancas nos workflows do n8n.
+// ============================================================
+const IDENTIDADE_VISUAL = true;
+
+const IDENTIDADES = {
+  '#00C2FF': { // AI Radar — limpo, tech, frio
+    fonte: 'Arial',
+    outline: 5,
+    shadow: 2,
+    grade: 'eq=contrast=1.06:saturation=0.94:gamma_b=1.04'
+  },
+  '#FFD400': { // Hidden Facts — pesado, dramatico, escuro
+    fonte: 'Anton',
+    outline: 6,
+    shadow: 3,
+    grade: 'eq=contrast=1.16:saturation=1.05:brightness=-0.04,vignette=PI/5'
+  }
+};
+
+// Preset padrao: usado quando a flag esta off OU a cor nao esta mapeada.
+// Mantem exatamente o visual atual.
+const IDENTIDADE_PADRAO = { fonte: 'Arial', outline: 5, shadow: 2, grade: '' };
+
+function getIdentidade(corLegenda) {
+  if (!IDENTIDADE_VISUAL) return IDENTIDADE_PADRAO;
+  const key = (corLegenda || '').toUpperCase().trim();
+  return IDENTIDADES[key] || IDENTIDADE_PADRAO;
+}
+
 async function downloadFile(url, dest) {
   const response = await axios({ url, responseType: 'stream' });
   const writer = fs.createWriteStream(dest);
@@ -43,7 +78,8 @@ app.post('/render', async (req, res) => {
     await fs.ensureDir(jobDir);
     const { audio_url, video_clips, language, cor_legenda } = req.body;
     const assColor = hexToAss(cor_legenda);
-    console.log('[render] jobId:', jobId, '| cor_legenda recebida:', cor_legenda, '| ASS:', assColor);
+    const identidade = getIdentidade(cor_legenda);
+    console.log('[render] jobId:', jobId, '| cor_legenda recebida:', cor_legenda, '| ASS:', assColor, '| fonte:', identidade.fonte, '| grade:', identidade.grade || '(nenhum)');
 
     // Define idioma para o WhisperX — default pt
     const whisperLang = language ? language.substring(0, 2).toLowerCase() : 'pt';
@@ -93,7 +129,7 @@ app.post('/render', async (req, res) => {
     assContent += 'PlayResY: 1920\n\n';
     assContent += '[V4+ Styles]\n';
     assContent += 'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n';
-    assContent += 'Style: Default,Arial,98,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,5,2,2,60,60,615,1\n\n';
+    assContent += 'Style: Default,' + identidade.fonte + ',98,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,' + identidade.outline + ',' + identidade.shadow + ',2,60,60,615,1\n\n';
     assContent += '[Events]\n';
     assContent += 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n';
 
@@ -148,7 +184,8 @@ app.post('/render', async (req, res) => {
 
     // 9. Aplica audio + legenda karaoke
     const outputPath = path.join(OUTPUT_DIR, jobId + '.mp4');
-    execSync('ffmpeg -stream_loop -1 -i ' + concatPath + ' -i ' + audioPath + ' -map 0:v -map 1:a -vf ass=' + assPath + ' -c:v libx264 -c:a aac -shortest ' + outputPath, { timeout: 300000 });
+    const vfGrade = identidade.grade ? identidade.grade + ',' : '';
+    execSync('ffmpeg -stream_loop -1 -i ' + concatPath + ' -i ' + audioPath + ' -map 0:v -map 1:a -vf "' + vfGrade + 'ass=' + assPath + '" -c:v libx264 -c:a aac -shortest ' + outputPath, { timeout: 300000 });
 
     // 10. Limpa temporarios
     await fs.remove(jobDir);
