@@ -59,14 +59,20 @@ function buildEndCardVf(corLegenda, dur) {
 // hook. Reaproveita nome/cor de END_CARDS. false desliga.
 // ============================================================
 const BRAND_BUG = true;
-const BRAND_BUG_DUR = 3.0; // segundos no inicio
+const BRAND_BUG_DUR = 3.0;       // segundos no inicio (janela total do pisca)
+const BRAND_BUG_PISCA = true;    // true = piscando | false = estatico
+const BRAND_BUG_CICLO = 0.8;     // duracao de cada ciclo de pisca (segundos)
+const BRAND_BUG_ACESO = 0.4;     // quanto do ciclo fica aceso (segundos)
 
 function buildBrandBugVf(corLegenda) {
   if (!BRAND_BUG) return '';
   const key = (corLegenda || '').toUpperCase().trim();
   const ec = END_CARDS[key];
   if (!ec) return '';
-  const en = "enable='lte(t," + BRAND_BUG_DUR.toFixed(1) + ")'";
+  const janela = 'lte(t,' + BRAND_BUG_DUR.toFixed(1) + ')';
+  const en = BRAND_BUG_PISCA
+    ? "enable='" + janela + '*lt(mod(t,' + BRAND_BUG_CICLO.toFixed(2) + '),' + BRAND_BUG_ACESO.toFixed(2) + ")'"
+    : "enable='" + janela + "'";
   return ',drawtext=fontfile=' + END_CARD_FONT + ":text='" + ec.nome + "':fontcolor=" + ec.cor + ':fontsize=44:box=1:boxcolor=black@0.5:boxborderw=18:x=48:y=90:' + en;
 }
 
