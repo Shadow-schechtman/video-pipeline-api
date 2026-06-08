@@ -88,7 +88,7 @@ function buildBrandBugVf(corLegenda) {
 // caminho normal (sem avatar) e nao quebra.
 // ============================================================
 const AVATAR = true;
-const AVATAR_DIR = '/opt/assets';              // base dos assets (fora do repo)
+const AVATAR_DIR = path.join(__dirname, 'assets'); // base dos assets, no repo (/opt/video-pipeline/assets)
 const RHUBARB = '/opt/rhubarb/rhubarb';        // binario do Rhubarb
 const AVATAR_W = 360;                          // largura do mascote no video (~1/3 de 1080)
 const AVATAR_X = 44;                           // margem esquerda (px)
