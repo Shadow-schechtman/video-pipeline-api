@@ -1,0 +1,9 @@
+# PNGs do mascote gerados na VPS a partir dos SVG (ai_radar/*.svg)
+ai_radar/*.png
+
+# Dependencias
+node_modules/
+
+# Saidas e temporarios do pipeline
+temp/
+output/
