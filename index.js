@@ -80,15 +80,15 @@ function buildBrandBugVf(corLegenda) {
 // AVATAR / MASCOTE (feature flag)
 // ------------------------------------------------------------
 // Mascote do canal narrando com lip-sync no canto inferior esquerdo.
-// Camadas (PNG transparente, mesmo canvas 220x224) ficam em AVATAR_DIR,
-// FORA do repo, para sobreviverem ao "git reset --hard". So o AI Radar
-// (#00C2FF) tem assets por enquanto. AVATAR=false desliga em todos os
-// canais (reversao total). A boca vem do Rhubarb Lip Sync; a pose
-// alterna em janelas de tempo. Se o Rhubarb falhar, o render cai no
+// A fonte fica versionada em SVG na pasta ai_radar/ (AVATAR_DIR); os PNG
+// usados pelo ffmpeg sao gerados na VPS a partir dos SVG (ensureAvatarAssets).
+// So o AI Radar (#00C2FF) tem assets por enquanto. AVATAR=false desliga em
+// todos os canais (reversao total). A boca vem do Rhubarb Lip Sync; a pose
+// alterna em janelas de tempo. Se o Rhubarb/rsvg falhar, o render cai no
 // caminho normal (sem avatar) e nao quebra.
 // ============================================================
 const AVATAR = true;
-const AVATAR_DIR = path.join(__dirname, 'assets'); // base dos assets, no repo (/opt/video-pipeline/assets)
+const AVATAR_DIR = path.join(__dirname, 'ai_radar'); // assets do mascote AI Radar (subpasta unica no repo)
 const RHUBARB = '/opt/rhubarb/rhubarb';        // binario do Rhubarb
 const AVATAR_W = 360;                          // largura do mascote no video (~1/3 de 1080)
 const AVATAR_X = 44;                           // margem esquerda (px)
@@ -97,17 +97,31 @@ const AVATAR_POSE_ROT = ['02_apresentando_dir', '01_ambos_baixo', '03_apontar_ci
 const AVATAR_POSE_INTERVAL = 2.8;              // segundos por pose antes de trocar
 // Rhubarb (A-H, X) -> nossos 7 visemas
 const RHUBARB_MAP = { A: 'rest', B: 'suave', C: 'e', D: 'aberto_a', E: 'o', F: 'u', G: 'suave', H: 'medio', X: 'rest' };
-// cor_legenda -> pasta de assets dentro de AVATAR_DIR
-const AVATAR_CHANNELS = { '#00C2FF': 'ai_radar' };
+// canais que possuem assets de mascote (chave = cor_legenda)
+const AVATAR_CHANNELS = { '#00C2FF': true };
+
+// A fonte dos assets no repo e SVG (texto, versionavel, nao polui o git). Os PNG
+// usados pelo ffmpeg sao renderizados na VPS a partir dos SVG, uma unica vez, com
+// o rsvg-convert (instalar: apt-get install -y librsvg2-bin). Sem o rsvg, o avatar
+// simplesmente nao ativa (o render do video segue normal, sem mascote).
+function ensureAvatarAssets() {
+  if (!fs.existsSync(AVATAR_DIR)) return;
+  const svgs = fs.readdirSync(AVATAR_DIR).filter(function (f) { return f.endsWith('.svg'); });
+  for (const f of svgs) {
+    const png = path.join(AVATAR_DIR, f.replace(/\.svg$/, '.png'));
+    if (!fs.existsSync(png)) {
+      execSync('rsvg-convert -w 720 ' + path.join(AVATAR_DIR, f) + ' -o ' + png, { timeout: 30000 });
+    }
+  }
+}
 
 function getAvatar(corLegenda) {
   if (!AVATAR) return null;
   const key = (corLegenda || '').toUpperCase().trim();
-  const slug = AVATAR_CHANNELS[key];
-  if (!slug) return null;
-  const dir = path.join(AVATAR_DIR, slug);
-  if (!fs.existsSync(path.join(dir, 'base.png'))) return null;
-  return { dir: dir, slug: slug };
+  if (!AVATAR_CHANNELS[key]) return null;
+  try { ensureAvatarAssets(); } catch (e) { console.log('[avatar] render SVG->PNG falhou (rsvg-convert instalado?):', e.message); }
+  if (!fs.existsSync(path.join(AVATAR_DIR, 'base.png'))) return null;
+  return { dir: AVATAR_DIR };
 }
 
 // Roda o Rhubarb no audio e devolve { visema: [[start,end],...] }.
