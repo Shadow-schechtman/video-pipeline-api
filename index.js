@@ -90,8 +90,8 @@ function buildBrandBugVf(corLegenda) {
 // Instalar uma vez na VPS: apt-get install -y librsvg2-bin
 // ============================================================
 const AVATAR = true;
-const AVATAR_W = 720;             // largura do mascote no video (2x)
-const AVATAR_X = 44;              // margem esquerda (px)
+const AVATAR_W = 520;             // largura do mascote no video (encolhido p/ nao colidir com a legenda)
+const AVATAR_X = 16;              // margem esquerda (px) - mais a esquerda
 const AVATAR_MARGIN_BOTTOM = 60;  // margem inferior (px)
 const AVATAR_FPS = 25;            // fps do avatar (baixar p/ 20 acelera o render)
 const AVATAR_CHANNELS = { '#00C2FF': true };

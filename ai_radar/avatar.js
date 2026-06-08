@@ -1,17 +1,3 @@
-// ============================================================
-// ai_radar/avatar.js — gerador parametrico do mascote AI Radar
-// ------------------------------------------------------------
-// Desenha o mascote QUADRO A QUADRO (PNG transparente) a partir de
-// numeros que variam suavemente: abertura da boca (vinda da amplitude
-// da narracao), piscar dos olhos, sobrancelha, "respiracao" (bob), giro
-// do feixe do radar e gestos de braco com transicao (crossfade). Isso
-// substitui a troca seca de PNGs (que ficava robotica).
-//
-// Uso (no index.js):
-//   const avatar = require('./ai_radar/avatar');
-//   const nf = avatar.renderFrames({ wavPath, fps, width, outDir });
-//   // depois sobrepoe outDir/av_%05d.png no ffmpeg (image2, framerate=fps)
-// ============================================================
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -21,7 +7,6 @@ const VB = '0 0 220 224';
 const rad = d => d * Math.PI / 180;
 const f1 = n => n.toFixed(1);
 
-// ---- maos / dedos (traco fino) ----
 function fingers(wx, wy, base, spread, count, length) {
   let s = '';
   for (let i = 0; i < count; i++) {
@@ -42,7 +27,6 @@ function armP(d) { return '<path d="' + d + '" fill="none" stroke="' + C + '" st
 const downR = armP('M166,150 C174,166 178,180 176,196') + hand(176, 196, 90);
 const downL = armP('M54,150 C46,166 42,180 44,196') + hand(44, 196, 90);
 
-// poses de braco usadas (idle = base; o resto sao gestos ocasionais)
 const POSES = {
   idle:      armP('M166,148 C180,143 190,142 198,146') + hand(198, 146, 5, 20, 52) + downL,
   apontar:   armP('M166,150 C182,144 192,137 197,131') + pointHand(197, 131, -30) + downL,
@@ -54,13 +38,16 @@ const GESTURES = ['comemorar', 'apontar', 'abertos', 'joinha'];
 
 function body() {
   return '<line x1="110" y1="48" x2="110" y2="30" stroke="' + C + '" stroke-width="3" stroke-linecap="round"/>'
-    + '<circle cx="110" cy="25" r="5" fill="' + C + '"/>'
+    // prato de satelite no topo da antena (oval inclinado + haste + LNB)
+    + '<g transform="rotate(-32 110 26)">'
+    + '<ellipse cx="110" cy="26" rx="13" ry="5.5" fill="' + DARK + '" stroke="' + C + '" stroke-width="2.5"/>'
+    + '<line x1="110" y1="26" x2="110" y2="14" stroke="' + C + '" stroke-width="1.8" stroke-linecap="round"/>'
+    + '<circle cx="110" cy="13" r="2.6" fill="' + C + '"/>'
+    + '</g>'
     + '<circle cx="110" cy="112" r="64" fill="' + DARK + '" stroke="' + C + '" stroke-width="4"/>'
     + '<circle cx="110" cy="112" r="50" fill="' + SCR + '" stroke="' + C + '" stroke-opacity=".5" stroke-width="2"/>'
     + '<circle cx="110" cy="112" r="37" fill="none" stroke="' + C + '" stroke-opacity=".3" stroke-width="1.5"/>'
-    + '<circle cx="110" cy="112" r="21" fill="none" stroke="' + C + '" stroke-opacity=".3" stroke-width="1.5"/>'
-    + '<rect x="98" y="176" width="24" height="15" rx="4" fill="' + DARK + '" stroke="' + C + '" stroke-width="3"/>'
-    + '<rect x="84" y="189" width="52" height="10" rx="5" fill="' + DARK + '" stroke="' + C + '" stroke-width="3"/>';
+    + '<circle cx="110" cy="112" r="21" fill="none" stroke="' + C + '" stroke-opacity=".3" stroke-width="1.5"/>';
 }
 function sweep(ang) {
   const a = rad(ang), L = 46;
@@ -71,12 +58,12 @@ function sweep(ang) {
 }
 function face(eyeOpen, brow) {
   const by = 93 - brow;
-  let s = '<path d="M85,' + f1(by) + ' Q98,' + f1(by - 4) + ' 111,' + f1(by) + '" fill="none" stroke="' + C + '" stroke-width="3" stroke-linecap="round"/>'
-    + '<path d="M109,' + f1(by) + ' Q122,' + f1(by - 4) + ' 137,' + f1(by) + '" fill="none" stroke="' + C + '" stroke-width="3" stroke-linecap="round"/>';
+  let s = '<path d="M82,' + f1(by) + ' Q92,' + f1(by - 2.5) + ' 102,' + f1(by) + '" fill="none" stroke="' + C + '" stroke-width="2.6" stroke-linecap="round"/>'
+    + '<path d="M118,' + f1(by) + ' Q128,' + f1(by - 2.5) + ' 138,' + f1(by) + '" fill="none" stroke="' + C + '" stroke-width="2.6" stroke-linecap="round"/>';
   const ry = Math.max(0.6, 9 * eyeOpen), pry = Math.max(0, 4 * eyeOpen);
-  s += '<ellipse cx="98" cy="109" rx="9" ry="' + ry.toFixed(2) + '" fill="' + EYE + '"/><ellipse cx="122" cy="109" rx="9" ry="' + ry.toFixed(2) + '" fill="' + EYE + '"/>';
-  if (pry > 0.2) s += '<ellipse cx="98" cy="109" rx="4" ry="' + pry.toFixed(2) + '" fill="' + PUP + '"/><ellipse cx="122" cy="109" rx="4" ry="' + pry.toFixed(2) + '" fill="' + PUP + '"/>';
-  if (eyeOpen > 0.5) s += '<circle cx="94" cy="105" r="2" fill="' + WHT + '"/><circle cx="118" cy="105" r="2" fill="' + WHT + '"/>';
+  s += '<ellipse cx="92" cy="109" rx="9" ry="' + ry.toFixed(2) + '" fill="' + EYE + '"/><ellipse cx="128" cy="109" rx="9" ry="' + ry.toFixed(2) + '" fill="' + EYE + '"/>';
+  if (pry > 0.2) s += '<ellipse cx="92" cy="109" rx="4" ry="' + pry.toFixed(2) + '" fill="' + PUP + '"/><ellipse cx="128" cy="109" rx="4" ry="' + pry.toFixed(2) + '" fill="' + PUP + '"/>';
+  if (eyeOpen > 0.5) s += '<circle cx="88" cy="105" r="2" fill="' + WHT + '"/><circle cx="124" cy="105" r="2" fill="' + WHT + '"/>';
   return s;
 }
 function mouth(opn, rnd) {
@@ -84,7 +71,6 @@ function mouth(opn, rnd) {
   return '<g transform="translate(110,140)"><path d="M' + f1(-w) + ',' + f1(top) + ' Q0,' + f1(up) + ' ' + f1(w) + ',' + f1(top) + ' Q0,' + f1(bot) + ' ' + f1(-w) + ',' + f1(top) + ' Z" fill="' + C + '"/></g>';
 }
 
-// ---- agenda de gestos (idle -> gesto -> idle ...) com crossfade ----
 function poseSegments(dur) {
   const segs = [{ t0: 0, pose: 'idle' }];
   const first = 3.0, period = 5.0, hold = 1.8;
@@ -111,10 +97,8 @@ function frameSVG(arm, opn, rnd, eyeOpen, brow, bob, ang) {
   return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + VB + '"><g transform="translate(0,' + bob.toFixed(2) + ')">' + inner + '</g></svg>';
 }
 
-// ---- envelope de amplitude (WAV PCM 16-bit mono) -> abertura suave ----
 function envelopeFromWav(wavPath, fps) {
   const buf = fs.readFileSync(wavPath);
-  // procura o chunk "data"
   let off = 12;
   let sr = buf.readUInt32LE(24);
   let dataOff = 44, dataLen = buf.length - 44;
@@ -149,7 +133,6 @@ function renderFrames(opts) {
   const nf = env.length;
   const dur = nf / fps;
 
-  // suavizacao (ataque rapido, relaxamento lento) + arredondamento leve p/ O/U
   const opn = new Array(nf); let prev = 0;
   for (let i = 0; i < nf; i++) { const tgt = env[i]; const k = tgt > prev ? 0.55 : 0.28; prev = prev + k * (tgt - prev); opn[i] = prev; }
   const rnd = opn.map(o => o > 0.2 ? Math.max(0, Math.min(1, (0.55 - o) * 1.3)) : 0);
@@ -163,7 +146,7 @@ function renderFrames(opts) {
     const eyeOpen = eyeAt(t);
     const brow = Math.max(0, Math.min(3, 1.3 * opn[i] + 0.7 * Math.sin(2 * Math.PI * t / 4 + 1) + 0.7));
     const bob = 1.6 * Math.sin(2 * Math.PI * t / 3);
-    const ang = (t * 36) % 360;
+    const ang = (t * 72) % 360;
     const arm = armAt(segs, t, xf);
     const svg = frameSVG(arm, opn[i], rnd[i], eyeOpen, brow, bob, ang);
     const sp = path.join(outDir, 's_' + String(i).padStart(5, '0') + '.svg');
@@ -175,4 +158,3 @@ function renderFrames(opts) {
 }
 
 module.exports = { renderFrames };
-
