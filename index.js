@@ -76,6 +76,78 @@ function buildBrandBugVf(corLegenda) {
   return ',drawtext=fontfile=' + END_CARD_FONT + ":text='" + ec.nome + "':fontcolor=" + ec.cor + ':fontsize=44:box=1:boxcolor=black@0.5:boxborderw=18:x=48:y=90:' + en;
 }
 
+// ============================================================
+// AVATAR / MASCOTE (feature flag)
+// ------------------------------------------------------------
+// Mascote do canal narrando com lip-sync no canto inferior esquerdo.
+// Camadas (PNG transparente, mesmo canvas 220x224) ficam em AVATAR_DIR,
+// FORA do repo, para sobreviverem ao "git reset --hard". So o AI Radar
+// (#00C2FF) tem assets por enquanto. AVATAR=false desliga em todos os
+// canais (reversao total). A boca vem do Rhubarb Lip Sync; a pose
+// alterna em janelas de tempo. Se o Rhubarb falhar, o render cai no
+// caminho normal (sem avatar) e nao quebra.
+// ============================================================
+const AVATAR = true;
+const AVATAR_DIR = '/opt/assets';              // base dos assets (fora do repo)
+const RHUBARB = '/opt/rhubarb/rhubarb';        // binario do Rhubarb
+const AVATAR_W = 360;                          // largura do mascote no video (~1/3 de 1080)
+const AVATAR_X = 44;                           // margem esquerda (px)
+const AVATAR_MARGIN_BOTTOM = 60;               // margem inferior (px)
+const AVATAR_POSE_ROT = ['02_apresentando_dir', '01_ambos_baixo', '03_apontar_cima_dir', '09_comemorando'];
+const AVATAR_POSE_INTERVAL = 2.8;              // segundos por pose antes de trocar
+// Rhubarb (A-H, X) -> nossos 7 visemas
+const RHUBARB_MAP = { A: 'rest', B: 'suave', C: 'e', D: 'aberto_a', E: 'o', F: 'u', G: 'suave', H: 'medio', X: 'rest' };
+// cor_legenda -> pasta de assets dentro de AVATAR_DIR
+const AVATAR_CHANNELS = { '#00C2FF': 'ai_radar' };
+
+function getAvatar(corLegenda) {
+  if (!AVATAR) return null;
+  const key = (corLegenda || '').toUpperCase().trim();
+  const slug = AVATAR_CHANNELS[key];
+  if (!slug) return null;
+  const dir = path.join(AVATAR_DIR, slug);
+  if (!fs.existsSync(path.join(dir, 'base.png'))) return null;
+  return { dir: dir, slug: slug };
+}
+
+// Roda o Rhubarb no audio e devolve { visema: [[start,end],...] }.
+function buildVisemeWindows(audioPath, jobDir, dur) {
+  const wav = path.join(jobDir, 'rhubarb.wav');
+  const json = path.join(jobDir, 'visemes.json');
+  execSync('ffmpeg -y -i ' + audioPath + ' -ac 1 -ar 16000 -sample_fmt s16 ' + wav, { timeout: 60000 });
+  execSync(RHUBARB + ' -f json -r phonetic ' + wav + ' -o ' + json, { timeout: 120000 });
+  const data = JSON.parse(fs.readFileSync(json, 'utf8'));
+  const wins = {};
+  for (const c of (data.mouthCues || [])) {
+    const v = RHUBARB_MAP[c.value] || 'rest';
+    const s = Math.max(0, parseFloat(c.start));
+    const e = Math.min(dur, parseFloat(c.end));
+    if (!(e > s)) continue;
+    (wins[v] = wins[v] || []).push([s, e]);
+  }
+  return wins;
+}
+
+// Janelas de enable por pose, rotacionando ao longo do video.
+function buildPoseWindows(dur) {
+  const wins = {};
+  let t = 0, i = 0;
+  while (t < dur) {
+    const p = AVATAR_POSE_ROT[i % AVATAR_POSE_ROT.length];
+    const e = Math.min(t + AVATAR_POSE_INTERVAL, dur);
+    (wins[p] = wins[p] || []).push([t, e]);
+    t += AVATAR_POSE_INTERVAL; i++;
+  }
+  return wins;
+}
+
+// Converte [[s,e],...] no enable do ffmpeg.
+function enableStr(ws) {
+  return "enable='" + ws.map(function (w) {
+    return 'between(t,' + w[0].toFixed(2) + ',' + w[1].toFixed(2) + ')';
+  }).join('+') + "'";
+}
+
 async function downloadFile(url, dest) {
   const response = await axios({ url, responseType: 'stream' });
   const writer = fs.createWriteStream(dest);
@@ -225,11 +297,61 @@ app.post('/render', async (req, res) => {
     const concatPath = path.join(jobDir, 'concat.mp4');
     execSync('ffmpeg -f concat -safe 0 -i ' + listPath + ' -c copy ' + concatPath, { timeout: 120000 });
 
-    // 9. Aplica audio + legenda karaoke
+    // 9. Aplica audio + legenda karaoke (+ avatar/mascote, se ativo)
     const outputPath = path.join(OUTPUT_DIR, jobId + '.mp4');
     const endCardVf = buildEndCardVf(cor_legenda, audioDur);
     const brandBugVf = buildBrandBugVf(cor_legenda);
-    execSync('ffmpeg -stream_loop -1 -i ' + concatPath + ' -i ' + audioPath + ' -map 0:v -map 1:a -vf "ass=' + assPath + endCardVf + brandBugVf + '" -c:v libx264 -c:a aac -shortest ' + outputPath, { timeout: 300000 });
+    const baseChain = 'ass=' + assPath + endCardVf + brandBugVf;
+
+    let av = getAvatar(cor_legenda);
+    let avData = null;
+    if (av && audioDur > 0) {
+      try {
+        avData = { mwins: buildVisemeWindows(audioPath, jobDir, audioDur), pwins: buildPoseWindows(audioDur) };
+      } catch (e) {
+        console.log('[avatar] desativado neste render (rhubarb/conversao falhou):', e.message);
+        av = null;
+      }
+    }
+
+    if (av && avData) {
+      const pos = 'x=' + AVATAR_X + ':y=H-h-' + AVATAR_MARGIN_BOTTOM;
+      // ordem dos assets (= ordem dos inputs a partir do indice 2):
+      // base -> bracos (poses com janela) -> boca rest -> bocas abertas (com janela)
+      const assets = [path.join(av.dir, 'base.png')];
+      const posesUsed = AVATAR_POSE_ROT.filter(function (p) {
+        return avData.pwins[p] && fs.existsSync(path.join(av.dir, 'arm_' + p + '.png'));
+      });
+      posesUsed.forEach(function (p) { assets.push(path.join(av.dir, 'arm_' + p + '.png')); });
+      const MOUTH_ORDER = ['suave', 'e', 'medio', 'aberto_a', 'o', 'u'];
+      const mouthsUsed = ['rest'].concat(MOUTH_ORDER.filter(function (m) {
+        return avData.mwins[m] && fs.existsSync(path.join(av.dir, 'mouth_' + m + '.png'));
+      }));
+      mouthsUsed.forEach(function (m) { assets.push(path.join(av.dir, 'mouth_' + m + '.png')); });
+
+      let inputs = '-stream_loop -1 -i ' + concatPath + ' -i ' + audioPath;
+      assets.forEach(function (a) { inputs += ' -i ' + a; });
+
+      // base video (legenda + end card + brand bug) -> [vb]; escala cada camada -> [Lk]
+      let fc = '[0:v]' + baseChain + '[vb]';
+      assets.forEach(function (a, j) { fc += ';[' + (2 + j) + ':v]scale=' + AVATAR_W + ':-1[L' + j + ']'; });
+      fc += ';[vb][L0]overlay=' + pos + '[v0]';   // corpo + feixe + expressao (sempre)
+      let prev = 'v0', li = 1, vi = 1;
+      posesUsed.forEach(function (p) {            // braco: troca de pose por janelas
+        fc += ';[' + prev + '][L' + li + ']overlay=' + pos + ':' + enableStr(avData.pwins[p]) + '[v' + vi + ']';
+        prev = 'v' + vi; li++; vi++;
+      });
+      fc += ';[' + prev + '][L' + li + ']overlay=' + pos + '[v' + vi + ']';  // boca rest sempre
+      prev = 'v' + vi; li++; vi++;
+      mouthsUsed.slice(1).forEach(function (m) {  // bocas abertas por cima, nas janelas do rhubarb
+        fc += ';[' + prev + '][L' + li + ']overlay=' + pos + ':' + enableStr(avData.mwins[m]) + '[v' + vi + ']';
+        prev = 'v' + vi; li++; vi++;
+      });
+
+      execSync('ffmpeg ' + inputs + ' -filter_complex "' + fc + '" -map "[' + prev + ']" -map 1:a -c:v libx264 -c:a aac -shortest ' + outputPath, { timeout: 300000 });
+    } else {
+      execSync('ffmpeg -stream_loop -1 -i ' + concatPath + ' -i ' + audioPath + ' -map 0:v -map 1:a -vf "' + baseChain + '" -c:v libx264 -c:a aac -shortest ' + outputPath, { timeout: 300000 });
+    }
 
     // 10. Limpa temporarios
     await fs.remove(jobDir);
