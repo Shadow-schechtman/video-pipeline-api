@@ -89,7 +89,7 @@ function buildBrandBugVf(corLegenda) {
 // rsvg-convert ausente), o video sai no caminho normal, sem mascote.
 // Instalar uma vez na VPS: apt-get install -y librsvg2-bin
 // ============================================================
-const AVATAR = false;          // TEMP: desligado p/ gerar videos sem mascote (voltar p/ true depois)
+const AVATAR = true;
 const AVATAR_W = 520;             // largura do mascote no video (encolhido p/ nao colidir com a legenda)
 const AVATAR_X = 16;              // margem esquerda (px) - mais a esquerda
 const AVATAR_MARGIN_BOTTOM = 60;  // margem inferior (px)
