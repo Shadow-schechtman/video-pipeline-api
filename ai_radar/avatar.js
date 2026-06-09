@@ -42,12 +42,14 @@ function armChain(sx, sy, shAng, elAng) {
 const R_SH = [166, 150], L_SH = [54, 150];
 
 // Poses por angulos: rs/re = ombro/cotovelo direito | ls/le = ombro/cotovelo esquerdo
+// Mascote fica no canto inferior-esquerdo: os gestos vao pra DIREITA (espaco livre).
+// O braco esquerdo descansa recolhido junto ao corpo (gesticular pra esquerda sairia da tela).
 const A = {
-  idle:      { rs: 78,  re: 90,  ls: 102, le: 90 },
-  wave:      { rs: -8,  re: -30, ls: 102, le: 90 },
-  point:     { rs: -18, re: -26, ls: 102, le: 90 },
+  idle:      { rs: 84,  re: 96,  ls: 96,  le: 84 },
+  wave:      { rs: -8,  re: -30, ls: 96,  le: 84 },
+  point:     { rs: -18, re: -26, ls: 96,  le: 84 },
   celebrate: { rs: -62, re: -78, ls: 242, le: 258 },
-  open:      { rs: 22,  re: 6,   ls: 158, le: 174 }
+  open:      { rs: 22,  re: 6,   ls: 96,  le: 84 }
 };
 const GSEQ = [A.wave, A.point, A.open];
 

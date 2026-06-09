@@ -84,14 +84,14 @@ function buildBrandBugVf(corLegenda) {
 // ./ai_radar/avatar.js: a boca acompanha a amplitude da narracao
 // (movimento continuo, suave), os olhos piscam, a sobrancelha tem
 // micro-movimento, ha uma leve "respiracao" e os bracos fazem gestos
-// ocasionais com transicao (crossfade). So o AI Radar (#00C2FF) esta
-// ligado. AVATAR=false desliga tudo. Se o render do avatar falhar (ex.:
-// rsvg-convert ausente), o video sai no caminho normal, sem mascote.
-// Instalar uma vez na VPS: apt-get install -y librsvg2-bin
+// ocasionais (voltados pra direita) com transicao. So o AI Radar
+// (#00C2FF) esta ligado. AVATAR=false desliga tudo. Se o render do
+// avatar falhar (ex.: rsvg-convert ausente), o video sai no caminho
+// normal, sem mascote. Instalar uma vez na VPS: apt-get install -y librsvg2-bin
 // ============================================================
 const AVATAR = true;
-const AVATAR_W = 891;             // largura do mascote (~40% da altura: viewBox 260 largo -> PNG 768 = 40% de 1920)
-const AVATAR_X = 16;              // margem esquerda (px) - mais a esquerda
+const AVATAR_W = 740;             // largura do mascote (~33% da altura: PNG 638 = 33% de 1920)
+const AVATAR_X = -130;            // negativo: cola o mascote no canto inferior-esquerdo (o padding lateral do viewBox sai da tela)
 const AVATAR_MARGIN_BOTTOM = 60;  // margem inferior (px)
 const AVATAR_FPS = 25;            // fps do avatar (baixar p/ 20 acelera o render)
 const AVATAR_CHANNELS = { '#00C2FF': true };
@@ -161,21 +161,31 @@ app.post('/render', async (req, res) => {
     // 3. Le o JSON do WhisperX
     const whisperOutput = JSON.parse(fs.readFileSync(path.join(jobDir, 'audio.json'), 'utf8'));
 
-    // 4. Usa segmentos naturais do WhisperX
-    const MAX_WORDS = 5;
+    // 4. Agrupa as palavras (legenda estilo amigo_dicas: 1 linha, poucas palavras)
+    // Legenda estilo amigo_dicas: UMA linha, agrupando quantas palavras couberem
+    // na coluna ao lado do mascote (palavra longa fica sozinha; 2-3 curtas juntas).
+    // O agrupamento respeita as pausas naturais (nao junta palavras de segmentos diferentes).
+    const WORDS_MAX = 3;        // teto de palavras por tela
+    const CHARS_BUDGET = 12;    // ~ largura da coluna lateral na fonte atual (caracteres)
     const phrases = [];
 
     if (whisperOutput.segments) {
       for (const seg of whisperOutput.segments) {
         if (!seg.words || seg.words.length === 0) continue;
-
-        if (seg.words.length <= MAX_WORDS) {
-          phrases.push(seg.words);
-        } else {
-          for (let i = 0; i < seg.words.length; i += MAX_WORDS) {
-            phrases.push(seg.words.slice(i, i + MAX_WORDS));
+        let group = [];
+        let chars = 0;
+        for (const w of seg.words) {
+          const wl = (w.word || '').trim().length;
+          const projected = group.length ? (chars + 1 + wl) : wl;
+          if (group.length && (group.length >= WORDS_MAX || projected > CHARS_BUDGET)) {
+            phrases.push(group);
+            group = [];
+            chars = 0;
           }
+          chars = group.length ? (chars + 1 + wl) : wl;
+          group.push(w);
         }
+        if (group.length) phrases.push(group);
       }
     }
 
@@ -189,13 +199,16 @@ app.post('/render', async (req, res) => {
     }
 
     // 6. Gera ASS estilo viral
+    // Legenda numa LINHA so, na coluna a direita do mascote (MarginL alto desloca o
+    // texto centralizado pra direita, liberando o canto onde fica o mascote). Karaoke
+    // mantido (palavra ativa na cor do canal, resto branco).
     let assContent = '[Script Info]\n';
     assContent += 'ScriptType: v4.00+\n';
     assContent += 'PlayResX: 1080\n';
     assContent += 'PlayResY: 1920\n\n';
     assContent += '[V4+ Styles]\n';
     assContent += 'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n';
-    assContent += 'Style: Default,Arial,98,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,5,2,2,60,60,880,1\n\n';
+    assContent += 'Style: Default,Arial,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,4,2,2,436,100,430,1\n\n';
     assContent += '[Events]\n';
     assContent += 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n';
 
@@ -219,9 +232,7 @@ app.post('/render', async (req, res) => {
           } else {
             lineText += '{\\c&H00FFFFFF&\\b1}' + word + '{\\r}';
           }
-          if (wj === 1 && phraseWords.length > 2) {
-            lineText += '\\N';
-          } else if (wj < phraseWords.length - 1) {
+          if (wj < phraseWords.length - 1) {
             lineText += ' ';
           }
         }
