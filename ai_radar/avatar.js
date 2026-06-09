@@ -9,7 +9,7 @@ const f1 = n => n.toFixed(1);
 const lerp = (a, b, p) => a + (b - a) * p;
 const ease = p => p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
 const FR = 40;                 // "raio" da face p/ projetar as feicoes na esfera
-const THETA_MAX = rad(16);     // amplitude maxima da virada (graus)
+const THETA_MAX = rad(8);      // amplitude maxima da virada (graus) - bem sutil
 
 // ---------- maos / dedos ----------
 function fingers(wx, wy, base, spread, count, length) {
@@ -200,9 +200,25 @@ function exprAt(t, kf) {
   };
 }
 
-// leve "virada de cabeca" (yaw): feicoes deslizam mais que o corpo => parallax
+// virada de cabeca OCASIONAL e bem pequena: frontal a maior parte do tempo,
+// e a cada ~PERIOD segundos da um olhar curto p/ um lado (alternando), com easing.
 function headYaw(t) {
-  return 0.7 * Math.sin(2 * Math.PI * t / 7) + 0.3 * Math.sin(2 * Math.PI * t / 3.3 + 1);
+  const PERIOD = 7.0;          // um olhar a cada ~7s
+  const MAG = 0.6;             // fracao de THETA_MAX usada (pequeno => ~5 graus de pico)
+  const START = 1.2;           // espera dentro do ciclo antes de olhar
+  const IN = 0.5, HOLD = 0.6, OUT = 0.7;  // entra / segura / volta
+  const idx = Math.floor(t / PERIOD);
+  const local = t - idx * PERIOD;
+  const dir = (idx % 2 === 0) ? 1 : -1;   // alterna o lado a cada olhar
+  let e = 0;
+  if (local >= START && local < START + IN) {
+    e = ease((local - START) / IN);
+  } else if (local >= START + IN && local < START + IN + HOLD) {
+    e = 1;
+  } else if (local >= START + IN + HOLD && local < START + IN + HOLD + OUT) {
+    e = 1 - ease((local - START - IN - HOLD) / OUT);
+  }
+  return dir * MAG * e;
 }
 
 function frameSVG(armsSvg, facePr, opn, rnd, eyeOpen, browMicro, bob, ang, yaw) {
