@@ -8,6 +8,8 @@ const rad = d => d * Math.PI / 180;
 const f1 = n => n.toFixed(1);
 const lerp = (a, b, p) => a + (b - a) * p;
 const ease = p => p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+const FR = 40;                 // "raio" da face p/ projetar as feicoes na esfera
+const THETA_MAX = rad(16);     // amplitude maxima da virada (graus)
 
 // ---------- maos / dedos ----------
 function fingers(wx, wy, base, spread, count, length) {
@@ -128,36 +130,47 @@ const EXPR = {
 };
 const EXPR_LIST = ['raised', 'curious', 'focused', 'neutral'];
 
-function brow(cx, byBase, arch, tilt) {
-  const d = 'M' + f1(cx - 10) + ',' + f1(byBase) + ' Q' + f1(cx) + ',' + f1(byBase - arch) + ' ' + f1(cx + 10) + ',' + f1(byBase);
+function brow(cx, byBase, arch, tilt, fx) {
+  fx = fx || 1; const hw = 10 * fx;
+  const d = 'M' + f1(cx - hw) + ',' + f1(byBase) + ' Q' + f1(cx) + ',' + f1(byBase - arch) + ' ' + f1(cx + hw) + ',' + f1(byBase);
   return '<g transform="rotate(' + tilt.toFixed(2) + ' ' + f1(cx) + ' ' + f1(byBase) + ')"><path d="' + d + '" fill="none" stroke="' + C + '" stroke-width="2.6" stroke-linecap="round"/></g>';
 }
-function eyeRound(cx, eyeOpen, es) {
-  const ry = Math.max(0.6, 9 * eyeOpen * es), rx = 9 * es, pry = Math.max(0, 4.5 * eyeOpen);
-  let s = '<ellipse cx="' + cx + '" cy="109" rx="' + rx.toFixed(2) + '" ry="' + ry.toFixed(2) + '" fill="url(#eyeg)"/>';
-  s += '<ellipse cx="' + cx + '" cy="109" rx="' + rx.toFixed(2) + '" ry="' + ry.toFixed(2) + '" fill="none" stroke="#8fd6f0" stroke-opacity="0.5" stroke-width="0.8"/>';
-  if (pry > 0.2) s += '<ellipse cx="' + cx + '" cy="109.5" rx="4" ry="' + pry.toFixed(2) + '" fill="' + PUP + '"/>';
-  if (eyeOpen > 0.5) s += '<circle cx="' + (cx - 3.5) + '" cy="105.5" r="2.4" fill="' + WHT + '"/><circle cx="' + (cx + 3) + '" cy="112" r="1.1" fill="' + WHT + '" fill-opacity="0.6"/>';
+function eyeRound(cx, eyeOpen, es, fx) {
+  fx = fx || 1;
+  const ry = Math.max(0.6, 9 * eyeOpen * es), rx = 9 * es * fx, pry = Math.max(0, 4.5 * eyeOpen);
+  const cxs = cx.toFixed(2);
+  let s = '<ellipse cx="' + cxs + '" cy="109" rx="' + rx.toFixed(2) + '" ry="' + ry.toFixed(2) + '" fill="url(#eyeg)"/>';
+  s += '<ellipse cx="' + cxs + '" cy="109" rx="' + rx.toFixed(2) + '" ry="' + ry.toFixed(2) + '" fill="none" stroke="#8fd6f0" stroke-opacity="0.5" stroke-width="0.8"/>';
+  if (pry > 0.2) s += '<ellipse cx="' + cxs + '" cy="109.5" rx="' + (4 * fx).toFixed(2) + '" ry="' + pry.toFixed(2) + '" fill="' + PUP + '"/>';
+  if (eyeOpen > 0.5) s += '<circle cx="' + (cx - 3.5 * fx).toFixed(2) + '" cy="105.5" r="2.4" fill="' + WHT + '"/><circle cx="' + (cx + 3 * fx).toFixed(2) + '" cy="112" r="1.1" fill="' + WHT + '" fill-opacity="0.6"/>';
   return s;
 }
-function eyeHappy(cx, eyeOpen) {
+function eyeHappy(cx, eyeOpen, fx) {
+  fx = fx || 1; const w = 8 * fx;
   const depth = 6 * Math.max(0.25, eyeOpen);
-  const d = 'M' + (cx - 8) + ',108 Q' + cx + ',' + f1(108 + depth) + ' ' + (cx + 8) + ',108';
+  const d = 'M' + (cx - w).toFixed(2) + ',108 Q' + cx.toFixed(2) + ',' + f1(108 + depth) + ' ' + (cx + w).toFixed(2) + ',108';
   return '<path d="' + d + '" fill="none" stroke="' + EYE + '" stroke-width="3.4" stroke-linecap="round"/>';
 }
-function face(p, eyeOpen, browMicro) {
+function face(p, eyeOpen, browMicro, opn, rnd, yaw) {
+  const theta = yaw * THETA_MAX;
   const byBase = 93 - p.by - browMicro;
-  let s = brow(92, byBase, p.arch, -p.tilt) + brow(128, byBase - p.asym, p.arch, p.tilt);
+  // projeta um offset horizontal (relativo ao centro 110) na esfera virada:
+  // x = posicao na tela | s = compressao horizontal (foreshortening) da feicao
+  const proj = off => { const phi = Math.asin(off / FR); return { x: 110 + FR * Math.sin(phi + theta), s: Math.cos(phi + theta) / Math.cos(phi) }; };
+  const le = proj(-18), re = proj(18), mo = proj(0);
+  let s = brow(le.x, byBase, p.arch, -p.tilt, le.s) + brow(re.x, byBase - p.asym, p.arch, p.tilt, re.s);
   if (p.eye === 'happy') {
-    s += eyeHappy(92, eyeOpen) + eyeHappy(128, eyeOpen);
+    s += eyeHappy(le.x, eyeOpen, le.s) + eyeHappy(re.x, eyeOpen, re.s);
   } else {
-    s += eyeRound(92, eyeOpen, p.es) + eyeRound(128, eyeOpen, p.es);
+    s += eyeRound(le.x, eyeOpen, p.es, le.s) + eyeRound(re.x, eyeOpen, p.es, re.s);
   }
+  s += mouth(opn, rnd, mo.x, mo.s);
   return s;
 }
-function mouth(opn, rnd) {
+function mouth(opn, rnd, cx, fx) {
+  cx = (cx == null ? 110 : cx); fx = fx || 1;
   const w = 14 - 5 * rnd, top = -4 * opn - 0.6 * rnd, up = top + 4, bot = 1 + 18 * opn - 3 * rnd;
-  return '<g transform="translate(110,140)"><path d="M' + f1(-w) + ',' + f1(top) + ' Q0,' + f1(up) + ' ' + f1(w) + ',' + f1(top) + ' Q0,' + f1(bot) + ' ' + f1(-w) + ',' + f1(top) + ' Z" fill="' + C + '"/></g>';
+  return '<g transform="translate(' + cx.toFixed(2) + ',140) scale(' + fx.toFixed(3) + ',1)"><path d="M' + f1(-w) + ',' + f1(top) + ' Q0,' + f1(up) + ' ' + f1(w) + ',' + f1(top) + ' Q0,' + f1(bot) + ' ' + f1(-w) + ',' + f1(top) + ' Z" fill="' + C + '"/></g>';
 }
 
 // agenda de expressoes: troca SEMPRE num instante de piscada (olho fechado),
@@ -193,13 +206,8 @@ function headYaw(t) {
 }
 
 function frameSVG(armsSvg, facePr, opn, rnd, eyeOpen, browMicro, bob, ang, yaw) {
-  const headDx = (yaw * 3).toFixed(2);
-  const headRot = (yaw * 1.8).toFixed(2);
-  const faceDx = (yaw * 7).toFixed(2);
-  const faceSq = (1 - 0.05 * Math.abs(yaw)).toFixed(3);
-  const faceG = '<g transform="translate(' + faceDx + ',0) translate(110,0) scale(' + faceSq + ',1) translate(-110,0)">' + face(facePr, eyeOpen, browMicro) + mouth(opn, rnd) + '</g>';
-  const head = '<g transform="translate(' + headDx + ',0) rotate(' + headRot + ' 110 178)">' + body() + sweep(ang) + armsSvg + faceG + '</g>';
-  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + VB + '">' + defs() + '<g transform="translate(0,' + bob.toFixed(2) + ')">' + head + '</g></svg>';
+  const inner = body() + sweep(ang) + armsSvg + face(facePr, eyeOpen, browMicro, opn, rnd, yaw);
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + VB + '">' + defs() + '<g transform="translate(0,' + bob.toFixed(2) + ')">' + inner + '</g></svg>';
 }
 
 function envelopeFromWav(wavPath, fps) {
