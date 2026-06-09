@@ -87,15 +87,13 @@ function defs() {
   return '<defs>'
     + '<radialGradient id="dome" cx="85" cy="86" r="115" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1b4a66"/><stop offset="0.45" stop-color="#0e2d42"/><stop offset="1" stop-color="#061521"/></radialGradient>'
     + '<linearGradient id="rim" x1="110" y1="44" x2="110" y2="182" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#7fe8ff"/><stop offset="0.5" stop-color="#16a6d8"/><stop offset="1" stop-color="#0b6f96"/></linearGradient>'
-    + '<radialGradient id="spec" cx="74" cy="72" r="38" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff" stop-opacity="0.42"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>'
     + '<radialGradient id="eyeg" cx="0" cy="0" r="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#bfe2f2"/></radialGradient>'
-    + '<filter id="soft" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="6"/></filter>'
     + '</defs>';
 }
 
 // ---------- corpo / antena / radar ----------
 function body() {
-  return '<ellipse cx="110" cy="184" rx="50" ry="11" fill="#000000" fill-opacity="0.42" filter="url(#soft)"/>'
+  return '<ellipse cx="110" cy="184" rx="50" ry="11" fill="#000000" fill-opacity="0.30"/>'
     + '<line x1="110" y1="48" x2="110" y2="30" stroke="' + C + '" stroke-width="3" stroke-linecap="round"/>'
     + '<g transform="rotate(-32 110 26)">'
     + '<ellipse cx="110" cy="26" rx="13" ry="5.5" fill="#0e2d42" stroke="url(#rim)" stroke-width="2.5"/>'
@@ -106,8 +104,7 @@ function body() {
     + '<circle cx="110" cy="112" r="50" fill="none" stroke="' + C + '" stroke-opacity=".22" stroke-width="1.5"/>'
     + '<circle cx="110" cy="112" r="37" fill="none" stroke="' + C + '" stroke-opacity=".18" stroke-width="1.3"/>'
     + '<circle cx="110" cy="112" r="21" fill="none" stroke="' + C + '" stroke-opacity=".16" stroke-width="1.2"/>'
-    + '<path d="M168,128 A64,64 0 0 1 52,128" fill="none" stroke="#04101a" stroke-opacity="0.45" stroke-width="7" stroke-linecap="round"/>'
-    + '<ellipse cx="76" cy="74" rx="27" ry="14" transform="rotate(-20 76 74)" fill="url(#spec)"/>';
+    + '<path d="M168,128 A64,64 0 0 1 52,128" fill="none" stroke="#04101a" stroke-opacity="0.45" stroke-width="7" stroke-linecap="round"/>';
 }
 function sweep(ang) {
   const a = rad(ang), L = 46;
@@ -188,9 +185,19 @@ function exprAt(t, kf) {
   };
 }
 
-function frameSVG(armsSvg, facePr, opn, rnd, eyeOpen, browMicro, bob, ang) {
-  const inner = body() + sweep(ang) + armsSvg + face(facePr, eyeOpen, browMicro) + mouth(opn, rnd);
-  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + VB + '">' + defs() + '<g transform="translate(0,' + bob.toFixed(2) + ')">' + inner + '</g></svg>';
+// leve "virada de cabeca" (yaw): feicoes deslizam mais que o corpo => parallax
+function headYaw(t) {
+  return 0.7 * Math.sin(2 * Math.PI * t / 7) + 0.3 * Math.sin(2 * Math.PI * t / 3.3 + 1);
+}
+
+function frameSVG(armsSvg, facePr, opn, rnd, eyeOpen, browMicro, bob, ang, yaw) {
+  const headDx = (yaw * 3).toFixed(2);
+  const headRot = (yaw * 1.8).toFixed(2);
+  const faceDx = (yaw * 7).toFixed(2);
+  const faceSq = (1 - 0.05 * Math.abs(yaw)).toFixed(3);
+  const faceG = '<g transform="translate(' + faceDx + ',0) translate(110,0) scale(' + faceSq + ',1) translate(-110,0)">' + face(facePr, eyeOpen, browMicro) + mouth(opn, rnd) + '</g>';
+  const head = '<g transform="translate(' + headDx + ',0) rotate(' + headRot + ' 110 178)">' + body() + sweep(ang) + armsSvg + faceG + '</g>';
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + VB + '">' + defs() + '<g transform="translate(0,' + bob.toFixed(2) + ')">' + head + '</g></svg>';
 }
 
 function envelopeFromWav(wavPath, fps) {
@@ -245,7 +252,8 @@ function renderFrames(opts) {
     const ang = (t * 72) % 360;
     const armsSvg = arms(t, armKf);
     const facePr = exprAt(t, exprKf);
-    const svg = frameSVG(armsSvg, facePr, opn[i], rnd[i], eyeOpen, browMicro, bob, ang);
+    const yaw = headYaw(t);
+    const svg = frameSVG(armsSvg, facePr, opn[i], rnd[i], eyeOpen, browMicro, bob, ang, yaw);
     const sp = path.join(outDir, 's_' + String(i).padStart(5, '0') + '.svg');
     const pp = path.join(outDir, 'av_' + String(i).padStart(5, '0') + '.png');
     fs.writeFileSync(sp, svg);
