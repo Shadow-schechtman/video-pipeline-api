@@ -90,7 +90,7 @@ function buildBrandBugVf(corLegenda) {
 // Instalar uma vez na VPS: apt-get install -y librsvg2-bin
 // ============================================================
 const AVATAR = true;
-const AVATAR_W = 660;             // largura do mascote no video (~35% da altura: 660 -> PNG 672 = 35% de 1920)
+const AVATAR_W = 891;             // largura do mascote (~40% da altura: viewBox 260 largo -> PNG 768 = 40% de 1920)
 const AVATAR_X = 16;              // margem esquerda (px) - mais a esquerda
 const AVATAR_MARGIN_BOTTOM = 60;  // margem inferior (px)
 const AVATAR_FPS = 25;            // fps do avatar (baixar p/ 20 acelera o render)
@@ -195,7 +195,7 @@ app.post('/render', async (req, res) => {
     assContent += 'PlayResY: 1920\n\n';
     assContent += '[V4+ Styles]\n';
     assContent += 'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n';
-    assContent += 'Style: Default,Arial,98,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,5,2,2,60,60,760,1\n\n';
+    assContent += 'Style: Default,Arial,98,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,5,2,2,60,60,880,1\n\n';
     assContent += '[Events]\n';
     assContent += 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n';
 

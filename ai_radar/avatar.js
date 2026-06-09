@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const C = '#00C2FF', DARK = '#0B2233', SCR = '#06182A', EYE = '#EAF6FF', PUP = '#06182A', WHT = '#FFFFFF';
-const VB = '0 0 220 224';
+const VB = '-20 0 260 224';
 const rad = d => d * Math.PI / 180;
 const f1 = n => n.toFixed(1);
 const lerp = (a, b, p) => a + (b - a) * p;
