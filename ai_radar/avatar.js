@@ -87,7 +87,7 @@ function defs() {
   return '<defs>'
     + '<radialGradient id="dome" cx="85" cy="86" r="115" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1b4a66"/><stop offset="0.45" stop-color="#0e2d42"/><stop offset="1" stop-color="#061521"/></radialGradient>'
     + '<linearGradient id="rim" x1="110" y1="44" x2="110" y2="182" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#7fe8ff"/><stop offset="0.5" stop-color="#16a6d8"/><stop offset="1" stop-color="#0b6f96"/></linearGradient>'
-    + '<radialGradient id="spec" cx="88" cy="84" r="46" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff" stop-opacity="0.5"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>'
+    + '<radialGradient id="spec" cx="74" cy="72" r="38" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff" stop-opacity="0.42"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>'
     + '<radialGradient id="eyeg" cx="0" cy="0" r="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#bfe2f2"/></radialGradient>'
     + '<filter id="soft" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="6"/></filter>'
     + '</defs>';
@@ -107,7 +107,7 @@ function body() {
     + '<circle cx="110" cy="112" r="37" fill="none" stroke="' + C + '" stroke-opacity=".18" stroke-width="1.3"/>'
     + '<circle cx="110" cy="112" r="21" fill="none" stroke="' + C + '" stroke-opacity=".16" stroke-width="1.2"/>'
     + '<path d="M168,128 A64,64 0 0 1 52,128" fill="none" stroke="#04101a" stroke-opacity="0.45" stroke-width="7" stroke-linecap="round"/>'
-    + '<ellipse cx="92" cy="90" rx="32" ry="24" fill="url(#spec)"/>';
+    + '<ellipse cx="76" cy="74" rx="27" ry="14" transform="rotate(-20 76 74)" fill="url(#spec)"/>';
 }
 function sweep(ang) {
   const a = rad(ang), L = 46;
