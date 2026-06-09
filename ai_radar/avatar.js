@@ -47,7 +47,7 @@ const A = {
   celebrate: { rs: -62, re: -78, ls: 242, le: 258 },
   open:      { rs: 22,  re: 6,   ls: 158, le: 174 }
 };
-const GSEQ = [A.wave, A.point, A.celebrate, A.open];
+const GSEQ = [A.wave, A.point, A.open];
 
 function armKeyframes(dur) {
   const kf = [{ t: 0, p: A.idle }];
@@ -82,18 +82,32 @@ function arms(t, kf) {
     + armChain(L_SH[0], L_SH[1], a.ls - sway1, a.le - sway2);
 }
 
+// ---------- defs (gradientes 3D) ----------
+function defs() {
+  return '<defs>'
+    + '<radialGradient id="dome" cx="85" cy="86" r="115" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1b4a66"/><stop offset="0.45" stop-color="#0e2d42"/><stop offset="1" stop-color="#061521"/></radialGradient>'
+    + '<linearGradient id="rim" x1="110" y1="44" x2="110" y2="182" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#7fe8ff"/><stop offset="0.5" stop-color="#16a6d8"/><stop offset="1" stop-color="#0b6f96"/></linearGradient>'
+    + '<radialGradient id="spec" cx="88" cy="84" r="46" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff" stop-opacity="0.5"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>'
+    + '<radialGradient id="eyeg" cx="0" cy="0" r="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#bfe2f2"/></radialGradient>'
+    + '<filter id="soft" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="6"/></filter>'
+    + '</defs>';
+}
+
 // ---------- corpo / antena / radar ----------
 function body() {
-  return '<line x1="110" y1="48" x2="110" y2="30" stroke="' + C + '" stroke-width="3" stroke-linecap="round"/>'
+  return '<ellipse cx="110" cy="184" rx="50" ry="11" fill="#000000" fill-opacity="0.42" filter="url(#soft)"/>'
+    + '<line x1="110" y1="48" x2="110" y2="30" stroke="' + C + '" stroke-width="3" stroke-linecap="round"/>'
     + '<g transform="rotate(-32 110 26)">'
-    + '<ellipse cx="110" cy="26" rx="13" ry="5.5" fill="' + DARK + '" stroke="' + C + '" stroke-width="2.5"/>'
+    + '<ellipse cx="110" cy="26" rx="13" ry="5.5" fill="#0e2d42" stroke="url(#rim)" stroke-width="2.5"/>'
     + '<line x1="110" y1="26" x2="110" y2="14" stroke="' + C + '" stroke-width="1.8" stroke-linecap="round"/>'
     + '<circle cx="110" cy="13" r="2.6" fill="' + C + '"/>'
     + '</g>'
-    + '<circle cx="110" cy="112" r="64" fill="' + DARK + '" stroke="' + C + '" stroke-width="4"/>'
-    + '<circle cx="110" cy="112" r="50" fill="' + SCR + '" stroke="' + C + '" stroke-opacity=".5" stroke-width="2"/>'
-    + '<circle cx="110" cy="112" r="37" fill="none" stroke="' + C + '" stroke-opacity=".3" stroke-width="1.5"/>'
-    + '<circle cx="110" cy="112" r="21" fill="none" stroke="' + C + '" stroke-opacity=".3" stroke-width="1.5"/>';
+    + '<circle cx="110" cy="112" r="64" fill="url(#dome)" stroke="url(#rim)" stroke-width="5"/>'
+    + '<circle cx="110" cy="112" r="50" fill="none" stroke="' + C + '" stroke-opacity=".22" stroke-width="1.5"/>'
+    + '<circle cx="110" cy="112" r="37" fill="none" stroke="' + C + '" stroke-opacity=".18" stroke-width="1.3"/>'
+    + '<circle cx="110" cy="112" r="21" fill="none" stroke="' + C + '" stroke-opacity=".16" stroke-width="1.2"/>'
+    + '<path d="M168,128 A64,64 0 0 1 52,128" fill="none" stroke="#04101a" stroke-opacity="0.45" stroke-width="7" stroke-linecap="round"/>'
+    + '<ellipse cx="92" cy="90" rx="32" ry="24" fill="url(#spec)"/>';
 }
 function sweep(ang) {
   const a = rad(ang), L = 46;
@@ -113,17 +127,18 @@ const EXPR = {
   curious: { arch: 2.0, tilt: 6,  by: 2,  eye: 'round', es: 1.02, asym: 5 },
   focused: { arch: 1.6, tilt: -5, by: -1, eye: 'round', es: 0.96, asym: 0 }
 };
-const EXPR_LIST = ['raised', 'happy', 'curious', 'focused', 'neutral'];
+const EXPR_LIST = ['raised', 'curious', 'focused', 'neutral'];
 
 function brow(cx, byBase, arch, tilt) {
   const d = 'M' + f1(cx - 10) + ',' + f1(byBase) + ' Q' + f1(cx) + ',' + f1(byBase - arch) + ' ' + f1(cx + 10) + ',' + f1(byBase);
   return '<g transform="rotate(' + tilt.toFixed(2) + ' ' + f1(cx) + ' ' + f1(byBase) + ')"><path d="' + d + '" fill="none" stroke="' + C + '" stroke-width="2.6" stroke-linecap="round"/></g>';
 }
 function eyeRound(cx, eyeOpen, es) {
-  const ry = Math.max(0.6, 9 * eyeOpen * es), rx = 9 * es, pry = Math.max(0, 4 * eyeOpen);
-  let s = '<ellipse cx="' + cx + '" cy="109" rx="' + rx.toFixed(2) + '" ry="' + ry.toFixed(2) + '" fill="' + EYE + '"/>';
-  if (pry > 0.2) s += '<ellipse cx="' + cx + '" cy="109" rx="4" ry="' + pry.toFixed(2) + '" fill="' + PUP + '"/>';
-  if (eyeOpen > 0.5) s += '<circle cx="' + (cx - 4) + '" cy="105" r="2" fill="' + WHT + '"/>';
+  const ry = Math.max(0.6, 9 * eyeOpen * es), rx = 9 * es, pry = Math.max(0, 4.5 * eyeOpen);
+  let s = '<ellipse cx="' + cx + '" cy="109" rx="' + rx.toFixed(2) + '" ry="' + ry.toFixed(2) + '" fill="url(#eyeg)"/>';
+  s += '<ellipse cx="' + cx + '" cy="109" rx="' + rx.toFixed(2) + '" ry="' + ry.toFixed(2) + '" fill="none" stroke="#8fd6f0" stroke-opacity="0.5" stroke-width="0.8"/>';
+  if (pry > 0.2) s += '<ellipse cx="' + cx + '" cy="109.5" rx="4" ry="' + pry.toFixed(2) + '" fill="' + PUP + '"/>';
+  if (eyeOpen > 0.5) s += '<circle cx="' + (cx - 3.5) + '" cy="105.5" r="2.4" fill="' + WHT + '"/><circle cx="' + (cx + 3) + '" cy="112" r="1.1" fill="' + WHT + '" fill-opacity="0.6"/>';
   return s;
 }
 function eyeHappy(cx, eyeOpen) {
@@ -175,7 +190,7 @@ function exprAt(t, kf) {
 
 function frameSVG(armsSvg, facePr, opn, rnd, eyeOpen, browMicro, bob, ang) {
   const inner = body() + sweep(ang) + armsSvg + face(facePr, eyeOpen, browMicro) + mouth(opn, rnd);
-  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + VB + '"><g transform="translate(0,' + bob.toFixed(2) + ')">' + inner + '</g></svg>';
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + VB + '">' + defs() + '<g transform="translate(0,' + bob.toFixed(2) + ')">' + inner + '</g></svg>';
 }
 
 function envelopeFromWav(wavPath, fps) {
