@@ -30,7 +30,6 @@ function hand(wx, wy, base, length, spread) {
 }
 
 // ---------- braco parametrico (ombro -> cotovelo -> punho) ----------
-// Angulos em graus, coords SVG (x p/ direita, y p/ baixo): 0 = direita, 90 = baixo, -90 = cima, 180 = esquerda.
 const UP_LEN = 24, FORE_LEN = 22;
 function armChain(sx, sy, shAng, elAng) {
   const sa = rad(shAng), ea = rad(elAng);
@@ -41,7 +40,6 @@ function armChain(sx, sy, shAng, elAng) {
 }
 const R_SH = [166, 150], L_SH = [54, 150];
 
-// Poses por angulos: rs/re = ombro/cotovelo direito | ls/le = ombro/cotovelo esquerdo
 // Mascote fica no canto inferior-esquerdo: os gestos vao pra DIREITA (espaco livre).
 // O braco esquerdo descansa recolhido junto ao corpo (gesticular pra esquerda sairia da tela).
 const A = {
@@ -53,6 +51,7 @@ const A = {
 };
 const GSEQ = [A.wave, A.point, A.open];
 
+// ----- fallback (sem roteiro): gestos por tempo fixo -----
 function armKeyframes(dur) {
   const kf = [{ t: 0, p: A.idle }];
   let tt = 2.5, gi = 0;
@@ -79,7 +78,6 @@ function armAnglesAt(t, kf) {
 }
 function arms(t, kf) {
   const a = armAnglesAt(t, kf);
-  // micro-sway continuo p/ nunca ficar "congelado"
   const sway1 = 2.2 * Math.sin(2 * Math.PI * t / 3.5);
   const sway2 = 2.4 * Math.sin(2 * Math.PI * t / 3.1 + 1);
   return armChain(R_SH[0], R_SH[1], a.rs + sway1, a.re + sway2)
@@ -91,7 +89,6 @@ function defs() {
   return '<defs>'
     + '<radialGradient id="dome" cx="85" cy="86" r="115" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1b4a66"/><stop offset="0.45" stop-color="#0e2d42"/><stop offset="1" stop-color="#061521"/></radialGradient>'
     + '<linearGradient id="rim" x1="110" y1="44" x2="110" y2="182" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#7fe8ff"/><stop offset="0.5" stop-color="#16a6d8"/><stop offset="1" stop-color="#0b6f96"/></linearGradient>'
-    + '<radialGradient id="spec" cx="84" cy="78" r="26" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff" stop-opacity="0.42"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>'
     + '<radialGradient id="eyeg" cx="0" cy="0" r="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#bfe2f2"/></radialGradient>'
     + '<filter id="soft" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="6"/></filter>'
     + '</defs>';
@@ -120,15 +117,15 @@ function sweep(ang) {
     + '<line x1="110" y1="112" x2="' + f1(x) + '" y2="' + f1(y) + '" stroke="' + C + '" stroke-opacity=".6" stroke-width="2"/>';
 }
 
-// ---------- expressoes (sobrancelha + olho) ----------
-// arch = curvatura | tilt = inclinacao (graus, ponta externa) | by = deslocamento vertical
-// eye = estilo do olho ('round' | 'happy') | es = escala do olho | asym = levantar so a direita (px)
+// ---------- expressoes (sobrancelha + olho + boca) ----------
+// arch=curvatura | tilt=inclinacao | by=desloc vertical | eye=estilo | es=escala olho
+// asym=levantar so a direita | mr=boost de "boca redonda" (surpresa)
 const EXPR = {
-  neutral: { arch: 2.5, tilt: 0,  by: 0,  eye: 'round', es: 1.0,  asym: 0 },
-  raised:  { arch: 3.4, tilt: 2,  by: 4,  eye: 'round', es: 1.06, asym: 0 },
-  happy:   { arch: 2.2, tilt: 0,  by: 3,  eye: 'happy', es: 1.0,  asym: 0 },
-  curious: { arch: 2.0, tilt: 6,  by: 2,  eye: 'round', es: 1.02, asym: 5 },
-  focused: { arch: 1.6, tilt: -5, by: -1, eye: 'round', es: 0.96, asym: 0 }
+  neutral: { arch: 2.5, tilt: 0,  by: 0,  eye: 'round', es: 1.00, asym: 0, mr: 0 },
+  raised:  { arch: 3.6, tilt: 2,  by: 5,  eye: 'round', es: 1.12, asym: 0, mr: 0.28 },
+  happy:   { arch: 2.2, tilt: 0,  by: 3,  eye: 'happy', es: 1.00, asym: 0, mr: 0 },
+  curious: { arch: 2.0, tilt: 6,  by: 2,  eye: 'round', es: 1.02, asym: 6, mr: 0.08 },
+  focused: { arch: 1.5, tilt: -6, by: -1, eye: 'round', es: 0.94, asym: 0, mr: 0 }
 };
 const EXPR_LIST = ['raised', 'curious', 'focused', 'neutral'];
 
@@ -153,11 +150,14 @@ function eyeHappy(cx, eyeOpen, fx) {
   const d = 'M' + (cx - w).toFixed(2) + ',108 Q' + cx.toFixed(2) + ',' + f1(108 + depth) + ' ' + (cx + w).toFixed(2) + ',108';
   return '<path d="' + d + '" fill="none" stroke="' + EYE + '" stroke-width="3.4" stroke-linecap="round"/>';
 }
+function mouth(opn, rnd, cx, fx) {
+  cx = (cx == null ? 110 : cx); fx = fx || 1;
+  const w = 14 - 5 * rnd, top = -4 * opn - 0.6 * rnd, up = top + 4, bot = 1 + 18 * opn - 3 * rnd;
+  return '<g transform="translate(' + cx.toFixed(2) + ',140) scale(' + fx.toFixed(3) + ',1)"><path d="M' + f1(-w) + ',' + f1(top) + ' Q0,' + f1(up) + ' ' + f1(w) + ',' + f1(top) + ' Q0,' + f1(bot) + ' ' + f1(-w) + ',' + f1(top) + ' Z" fill="' + C + '"/></g>';
+}
 function face(p, eyeOpen, browMicro, opn, rnd, yaw) {
   const theta = yaw * THETA_MAX;
   const byBase = 93 - p.by - browMicro;
-  // projeta um offset horizontal (relativo ao centro 110) na esfera virada:
-  // x = posicao na tela | s = compressao horizontal (foreshortening) da feicao
   const proj = off => { const phi = Math.asin(off / FR); return { x: 110 + FR * Math.sin(phi + theta), s: Math.cos(phi + theta) / Math.cos(phi) }; };
   const le = proj(-18), re = proj(18), mo = proj(0);
   let s = brow(le.x, byBase, p.arch, -p.tilt, le.s) + brow(re.x, byBase - p.asym, p.arch, p.tilt, re.s);
@@ -166,17 +166,12 @@ function face(p, eyeOpen, browMicro, opn, rnd, yaw) {
   } else {
     s += eyeRound(le.x, eyeOpen, p.es, le.s) + eyeRound(re.x, eyeOpen, p.es, re.s);
   }
-  s += mouth(opn, rnd, mo.x, mo.s);
+  const rnd2 = Math.min(1, rnd + (p.mr || 0));
+  s += mouth(opn, rnd2, mo.x, mo.s);
   return s;
 }
-function mouth(opn, rnd, cx, fx) {
-  cx = (cx == null ? 110 : cx); fx = fx || 1;
-  const w = 14 - 5 * rnd, top = -4 * opn - 0.6 * rnd, up = top + 4, bot = 1 + 18 * opn - 3 * rnd;
-  return '<g transform="translate(' + cx.toFixed(2) + ',140) scale(' + fx.toFixed(3) + ',1)"><path d="M' + f1(-w) + ',' + f1(top) + ' Q0,' + f1(up) + ' ' + f1(w) + ',' + f1(top) + ' Q0,' + f1(bot) + ' ' + f1(-w) + ',' + f1(top) + ' Z" fill="' + C + '"/></g>';
-}
 
-// agenda de expressoes: troca SEMPRE num instante de piscada (olho fechado),
-// entao a mudanca de estilo do olho nao "pula". A sobrancelha desliza suave.
+// ----- fallback (sem roteiro): expressoes trocam nas piscadas -----
 function exprKeyframes(blinks) {
   const kf = [{ t: 0, name: 'neutral' }];
   let ei = 0;
@@ -191,35 +186,95 @@ function exprAt(t, kf) {
   const cur = EXPR[kf[i].name];
   const prev = EXPR[kf[Math.max(0, i - 1)].name];
   const local = t - kf[i].t;
-  const pe = ease(Math.max(0, Math.min(1, local / 0.5)));   // sobrancelha desliza em ~0.5s
+  const pe = ease(Math.max(0, Math.min(1, local / 0.5)));
   return {
     arch: lerp(prev.arch, cur.arch, pe),
     tilt: lerp(prev.tilt, cur.tilt, pe),
     by:   lerp(prev.by,   cur.by,   pe),
     asym: lerp(prev.asym, cur.asym, pe),
-    eye:  cur.eye,   // estilo do olho troca no instante (durante a piscada)
+    mr:   lerp(prev.mr,   cur.mr,   pe),
+    eye:  cur.eye,
     es:   cur.es
   };
 }
 
-// virada de cabeca OCASIONAL e bem pequena: frontal a maior parte do tempo,
-// e a cada ~PERIOD segundos da um olhar curto p/ um lado (alternando), com easing.
+// ============================================================
+// AGENDA DIRIGIDA PELO ROTEIRO (tempos das palavras do WhisperX)
+// Beats = inicio de cada frase falada (apos pausa). Em cada beat:
+//  - troca a expressao (gancho=surpresa, fim=sorriso, meio=alterna)
+//  - dispara um gesto pra direita (com cooldown, sem empilhar)
+//  - pisca (mascara a troca de estilo de olho)
+// Palavras enfatizadas (longas) ganham um aceno de cabeca (nod).
+// ============================================================
+function buildSchedule(words, dur) {
+  const GAP = 0.35;
+  const beats = [];
+  let prevEnd = -99;
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (w.start == null) continue;
+    if (i === 0 || (w.start - prevEnd) > GAP) beats.push(w.start);
+    prevEnd = (w.end != null ? w.end : w.start);
+  }
+  const GSEQ2 = [A.wave, A.point, A.open];
+  const ESEQ = ['curious', 'focused', 'neutral', 'raised'];
+  const gKf = [{ t: 0, p: A.idle }];
+  const eKf = [{ t: 0, name: 'neutral' }];
+  let blinks = [];
+  let gi = 0, lastG = -99;
+  for (let b = 0; b < beats.length; b++) {
+    const t = beats[b];
+    let name;
+    if (b === 0) name = 'raised';
+    else if (t > dur * 0.80) name = 'happy';
+    else name = ESEQ[b % ESEQ.length];
+    eKf.push({ t: t, name: name });
+    blinks.push(t);
+    if (t - lastG > 2.3) {
+      const g = (b === 0) ? A.wave : GSEQ2[gi % GSEQ2.length];
+      gi++;
+      gKf.push({ t: Math.max(0.01, t - 0.05), p: A.idle });
+      gKf.push({ t: t + 0.45, p: g });
+      gKf.push({ t: t + 1.40, p: g });
+      gKf.push({ t: t + 1.90, p: A.idle });
+      lastG = t;
+    }
+  }
+  gKf.push({ t: dur + 1, p: A.idle });
+  const nods = [];
+  let lastN = -99;
+  for (const w of words) {
+    if (w.start == null) continue;
+    const len = (w.word || '').trim().length;
+    const long = len >= 7 || ((w.end != null ? w.end : w.start) - w.start) >= 0.45;
+    if (long && (w.start - lastN) > 1.6) { nods.push(w.start); lastN = w.start; }
+  }
+  for (let tb = 1.4; tb < dur; tb += 3.0) blinks.push(tb);
+  blinks.sort((a, b) => a - b);
+  const dedup = [];
+  for (const tb of blinks) { if (!dedup.length || tb - dedup[dedup.length - 1] > 0.45) dedup.push(tb); }
+  return { gKf: gKf, eKf: eKf, blinks: dedup, nods: nods };
+}
+function nodAt(t, nods) {
+  if (!nods || !nods.length) return 0;
+  let d = 0;
+  for (const tn of nods) {
+    const x = t - tn;
+    if (x >= 0 && x < 0.34) d += 3.4 * Math.sin(Math.PI * x / 0.34);
+  }
+  return d;
+}
+
+// virada de cabeca OCASIONAL e bem pequena
 function headYaw(t) {
-  const PERIOD = 7.0;          // um olhar a cada ~7s
-  const MAG = 0.6;             // fracao de THETA_MAX usada (pequeno => ~5 graus de pico)
-  const START = 1.2;           // espera dentro do ciclo antes de olhar
-  const IN = 0.5, HOLD = 0.6, OUT = 0.7;  // entra / segura / volta
+  const PERIOD = 7.0, MAG = 0.6, START = 1.2, IN = 0.5, HOLD = 0.6, OUT = 0.7;
   const idx = Math.floor(t / PERIOD);
   const local = t - idx * PERIOD;
-  const dir = (idx % 2 === 0) ? 1 : -1;   // alterna o lado a cada olhar
+  const dir = (idx % 2 === 0) ? 1 : -1;
   let e = 0;
-  if (local >= START && local < START + IN) {
-    e = ease((local - START) / IN);
-  } else if (local >= START + IN && local < START + IN + HOLD) {
-    e = 1;
-  } else if (local >= START + IN + HOLD && local < START + IN + HOLD + OUT) {
-    e = 1 - ease((local - START - IN - HOLD) / OUT);
-  }
+  if (local >= START && local < START + IN) e = ease((local - START) / IN);
+  else if (local >= START + IN && local < START + IN + HOLD) e = 1;
+  else if (local >= START + IN + HOLD && local < START + IN + HOLD + OUT) e = 1 - ease((local - START - IN - HOLD) / OUT);
   return dir * MAG * e;
 }
 
@@ -267,16 +322,24 @@ function renderFrames(opts) {
   for (let i = 0; i < nf; i++) { const tgt = env[i]; const k = tgt > prev ? 0.55 : 0.28; prev = prev + k * (tgt - prev); opn[i] = prev; }
   const rnd = opn.map(o => o > 0.2 ? Math.max(0, Math.min(1, (0.55 - o) * 1.3)) : 0);
 
-  const armKf = armKeyframes(dur);
-  const blinks = []; for (let tb = 1.4; tb < dur; tb += 3.0) blinks.push(tb);
+  // Agenda dirigida pelo ROTEIRO quando ha tempos de palavras; senao, ciclo por tempo.
+  let armKf, exprKf, blinks, nods;
+  if (opts.words && opts.words.length) {
+    const sch = buildSchedule(opts.words, dur);
+    armKf = sch.gKf; exprKf = sch.eKf; blinks = sch.blinks; nods = sch.nods;
+  } else {
+    armKf = armKeyframes(dur);
+    blinks = []; for (let tb = 1.4; tb < dur; tb += 3.0) blinks.push(tb);
+    exprKf = exprKeyframes(blinks);
+    nods = [];
+  }
   const eyeAt = t => { let e = 1; for (const tb of blinks) e = Math.min(e, 1 - Math.exp(-Math.pow((t - tb) / 0.07, 2))); return Math.max(0, e); };
-  const exprKf = exprKeyframes(blinks);
 
   for (let i = 0; i < nf; i++) {
     const t = i / fps;
     const eyeOpen = eyeAt(t);
     const browMicro = 1.2 * opn[i] + 0.5 * Math.sin(2 * Math.PI * t / 4 + 1);
-    const bob = 1.6 * Math.sin(2 * Math.PI * t / 3);
+    const bob = 1.6 * Math.sin(2 * Math.PI * t / 3) + nodAt(t, nods);
     const ang = (t * 72) % 360;
     const armsSvg = arms(t, armKf);
     const facePr = exprAt(t, exprKf);

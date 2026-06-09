@@ -81,16 +81,16 @@ function buildBrandBugVf(corLegenda) {
 // AVATAR / MASCOTE (feature flag)
 // ------------------------------------------------------------
 // Mascote do canal renderizado QUADRO A QUADRO pelo modulo
-// ./ai_radar/avatar.js: a boca acompanha a amplitude da narracao
-// (movimento continuo, suave), os olhos piscam, a sobrancelha tem
-// micro-movimento, ha uma leve "respiracao" e os bracos fazem gestos
-// ocasionais (voltados pra direita) com transicao. So o AI Radar
-// (#00C2FF) esta ligado. AVATAR=false desliga tudo. Se o render do
-// avatar falhar (ex.: rsvg-convert ausente), o video sai no caminho
-// normal, sem mascote. Instalar uma vez na VPS: apt-get install -y librsvg2-bin
+// ./ai_radar/avatar.js: a boca acompanha a amplitude da narracao,
+// e as EXPRESSOES, GESTOS e acenos de cabeca sao sincronizados com
+// o roteiro (tempos das palavras do WhisperX, passados em 'words').
+// So o AI Radar (#00C2FF) esta ligado. AVATAR=false desliga tudo.
+// Se o render do avatar falhar (ex.: rsvg-convert ausente), o video
+// sai no caminho normal, sem mascote. Instalar uma vez na VPS:
+// apt-get install -y librsvg2-bin
 // ============================================================
 const AVATAR = true;
-const AVATAR_W = 740;             // largura do mascote (~33% da altura: PNG 638 = 33% de 1920)
+const AVATAR_W = 780;             // largura do mascote (~35% da altura: PNG 672 = 35% de 1920)
 const AVATAR_X = -130;            // negativo: cola o mascote no canto inferior-esquerdo (o padding lateral do viewBox sai da tela)
 const AVATAR_MARGIN_BOTTOM = 60;  // margem inferior (px)
 const AVATAR_FPS = 25;            // fps do avatar (baixar p/ 20 acelera o render)
@@ -208,7 +208,7 @@ app.post('/render', async (req, res) => {
     assContent += 'PlayResY: 1920\n\n';
     assContent += '[V4+ Styles]\n';
     assContent += 'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n';
-    assContent += 'Style: Default,Arial,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,4,2,2,436,100,430,1\n\n';
+    assContent += 'Style: Default,Arial,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,4,2,2,466,100,430,1\n\n';
     assContent += '[Events]\n';
     assContent += 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n';
 
@@ -269,15 +269,28 @@ app.post('/render', async (req, res) => {
     const baseChain = 'ass=' + assPath + endCardVf + brandBugVf;
 
     // Gera os frames do avatar (PNG transparente) a partir da narracao.
-    // A boca segue a amplitude do audio; olhos/sobrancelha/bracos sao animados
-    // dentro do modulo avatar.js. Se falhar, segue sem mascote (nao quebra).
+    // A boca segue a amplitude do audio; olhos/sobrancelha/bracos/expressoes sao
+    // animados dentro do modulo avatar.js. Se falhar, segue sem mascote (nao quebra).
     let avFrames = null;
     if (avatarOn(cor_legenda) && audioDur > 0) {
       try {
         const wavPath = path.join(jobDir, 'av.wav');
         execSync('ffmpeg -y -i ' + audioPath + ' -ac 1 -ar 16000 -sample_fmt s16 ' + wavPath, { timeout: 60000 });
         const avDir = path.join(jobDir, 'avframes');
-        const nf = avatar.renderFrames({ wavPath: wavPath, fps: AVATAR_FPS, width: AVATAR_W, outDir: avDir });
+        // Passa os tempos das palavras (WhisperX) p/ o avatar reagir ao roteiro:
+        // expressoes, gestos e acenos de cabeca sincronizam com a fala.
+        const avatarWords = [];
+        if (whisperOutput.segments) {
+          for (const seg of whisperOutput.segments) {
+            if (!seg.words) continue;
+            for (const w of seg.words) {
+              if (w && w.start != null && w.end != null) {
+                avatarWords.push({ word: (w.word || '').trim(), start: w.start, end: w.end });
+              }
+            }
+          }
+        }
+        const nf = avatar.renderFrames({ wavPath: wavPath, fps: AVATAR_FPS, width: AVATAR_W, outDir: avDir, words: avatarWords });
         if (nf > 0) avFrames = path.join(avDir, 'av_%05d.png');
       } catch (e) {
         console.log('[avatar] desativado neste render (geracao de frames falhou):', e.message);
