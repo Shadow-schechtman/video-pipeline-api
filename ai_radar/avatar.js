@@ -87,13 +87,15 @@ function defs() {
   return '<defs>'
     + '<radialGradient id="dome" cx="85" cy="86" r="115" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1b4a66"/><stop offset="0.45" stop-color="#0e2d42"/><stop offset="1" stop-color="#061521"/></radialGradient>'
     + '<linearGradient id="rim" x1="110" y1="44" x2="110" y2="182" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#7fe8ff"/><stop offset="0.5" stop-color="#16a6d8"/><stop offset="1" stop-color="#0b6f96"/></linearGradient>'
+    + '<radialGradient id="spec" cx="84" cy="78" r="26" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff" stop-opacity="0.42"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>'
     + '<radialGradient id="eyeg" cx="0" cy="0" r="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#bfe2f2"/></radialGradient>'
+    + '<filter id="soft" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="6"/></filter>'
     + '</defs>';
 }
 
 // ---------- corpo / antena / radar ----------
 function body() {
-  return '<ellipse cx="110" cy="184" rx="50" ry="11" fill="#000000" fill-opacity="0.30"/>'
+  return '<ellipse cx="110" cy="184" rx="50" ry="11" fill="#000000" fill-opacity="0.42" filter="url(#soft)"/>'
     + '<line x1="110" y1="48" x2="110" y2="30" stroke="' + C + '" stroke-width="3" stroke-linecap="round"/>'
     + '<g transform="rotate(-32 110 26)">'
     + '<ellipse cx="110" cy="26" rx="13" ry="5.5" fill="#0e2d42" stroke="url(#rim)" stroke-width="2.5"/>'
