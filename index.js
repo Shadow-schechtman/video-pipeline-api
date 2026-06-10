@@ -88,8 +88,13 @@ function buildBrandBugVf(corLegenda) {
 // Se o render do avatar falhar (ex.: rsvg-convert ausente), o video
 // sai no caminho normal, sem mascote. Instalar uma vez na VPS:
 // apt-get install -y librsvg2-bin
+// ------------------------------------------------------------
+// [TEMP 09/06] Mascote DESLIGADO (AVATAR=false) para gerar e postar
+// videos sem avatar enquanto seguem os ajustes de sincronia/gestos/
+// boca/sobrancelha. Para RETOMAR os testes do mascote: voltar para true.
+// Todo o codigo reativo (commit 8fe13b3) permanece intacto.
 // ============================================================
-const AVATAR = true;
+const AVATAR = false;
 const AVATAR_W = 780;             // largura do mascote (~35% da altura: PNG 672 = 35% de 1920)
 const AVATAR_X = -130;            // negativo: cola o mascote no canto inferior-esquerdo (o padding lateral do viewBox sai da tela)
 const AVATAR_MARGIN_BOTTOM = 60;  // margem inferior (px)
