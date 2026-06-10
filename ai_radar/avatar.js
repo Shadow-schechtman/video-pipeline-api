@@ -195,6 +195,9 @@ const GEST_RIG = {
   open:  { armR_raise: 0.6, armR_extend: 0.72, hand_open_R: 1.0 }
 };
 const EXPR_KEYS = ['brow_raise_L', 'brow_raise_R', 'brow_angle_L', 'brow_angle_R', 'eye_smile', 'eye_squint', 'mouth_corner', 'pupil_dilate', 'head_roll', 'body_squash'];
+// canais que um TRACK (viseme estagio 3 / dicionario minerado estagio 5) sobrepoe DIRETO no frame.
+// canais com mola (head_pitch/yaw/roll, armR_*) sao tratados ajustando o ALVO antes da mola.
+const DIRECT_TR = ['brow_raise_L', 'brow_raise_R', 'brow_angle_L', 'brow_angle_R', 'eye_smile', 'eye_squint', 'mouth_corner', 'pupil_dilate', 'gaze_x', 'gaze_y', 'mouth_open', 'mouth_round', 'mouth_width', 'hand_open_R'];
 function blendExpr(a, b, p) {
   const o = {};
   for (const k of EXPR_KEYS) o[k] = lerp(a[k] != null ? a[k] : REST[k], b[k] != null ? b[k] : REST[k], p);
@@ -348,6 +351,15 @@ function renderFrames(opts) {
 
   const sch = (opts.words && opts.words.length) ? buildSchedule(opts.words, dur) : buildScheduleFallback(dur);
   const eKf = sch.eKf, gKf = sch.gKf, blinks = sch.blinks, nods = sch.nods;
+
+  // PORTA DE TRACK (opt-in, retrocompativel):
+  // - opts.visemes: cues de fonema (estagio 3) -> track densa de boca (substitui amplitude).
+  // - opts.rigTrack: track densa por frame de canais de rig (estagio 5, dicionario minerado).
+  let visTrack = null;
+  if (opts.visemes && opts.visemes.length) {
+    try { visTrack = require('./visemes').buildVisemeTrack(opts.visemes, fps, dur); } catch (e) { visTrack = null; }
+  }
+  const rigTrack = (opts.rigTrack && opts.rigTrack.length) ? opts.rigTrack : null;
   const eyeAt = t => { let e = 1; for (const tb of blinks) e = Math.min(e, 1 - Math.exp(-Math.pow((t - tb) / 0.07, 2))); return Math.max(0, e); };
 
   // passo 1: amostra os ALVOS por frame
@@ -370,6 +382,17 @@ function renderFrames(opts) {
     r.hand_open_R = ge.hand_open_R;
     Tp[i] = nodTarget(t, nods); Ty[i] = headYaw(t); Tr[i] = ex.head_roll;
     TaR[i] = ge.armR_raise; TeR[i] = ge.armR_extend;
+    // sobreposicao por TRACK (se houver): boca por viseme + canais minerados
+    if (visTrack && visTrack[i]) { r.mouth_open = visTrack[i].mouth_open; r.mouth_round = visTrack[i].mouth_round; r.mouth_width = visTrack[i].mouth_width; }
+    if (rigTrack && rigTrack[i]) {
+      const k = rigTrack[i];
+      for (let d = 0; d < DIRECT_TR.length; d++) { const ch = DIRECT_TR[d]; if (k[ch] != null) r[ch] = k[ch]; }
+      if (k.head_pitch != null) Tp[i] = k.head_pitch;
+      if (k.head_yaw != null) Ty[i] = k.head_yaw;
+      if (k.head_roll != null) Tr[i] = k.head_roll;
+      if (k.armR_raise != null) TaR[i] = k.armR_raise;
+      if (k.armR_extend != null) TeR[i] = k.armR_extend;
+    }
     frameRig[i] = r;
   }
   // passo 2: aplica molas (overshoot na cabeca/bracos; antena segue a cabeca com atraso)
