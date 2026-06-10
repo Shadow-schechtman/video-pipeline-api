@@ -295,7 +295,15 @@ app.post('/render', async (req, res) => {
             }
           }
         }
-        const nf = avatar.renderFrames({ wavPath: wavPath, fps: AVATAR_FPS, width: AVATAR_W, outDir: avDir, words: avatarWords });
+        // ESTAGIO 5 (plug-and-play): se houver dicionario minerado do canal, monta a
+        // rigTrack de expressao. Inerte se o dict nao existir (sem dict -> heuristicas).
+        let rigTrack = null;
+        try {
+          const ET = require('./ai_radar/expr_track');
+          const exprDict = ET.loadDictForChannel(cor_legenda);
+          if (exprDict) rigTrack = ET.buildRigTrack({ words: avatarWords, dur: audioDur, fps: AVATAR_FPS, dict: exprDict });
+        } catch (e) { rigTrack = null; }
+        const nf = avatar.renderFrames({ wavPath: wavPath, fps: AVATAR_FPS, width: AVATAR_W, outDir: avDir, words: avatarWords, rigTrack: rigTrack });
         if (nf > 0) avFrames = path.join(avDir, 'av_%05d.png');
       } catch (e) {
         console.log('[avatar] desativado neste render (geracao de frames falhou):', e.message);
