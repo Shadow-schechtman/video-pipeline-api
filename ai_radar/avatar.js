@@ -2,14 +2,33 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const C = '#00C2FF', DARK = '#0B2233', SCR = '#06182A', EYE = '#EAF6FF', PUP = '#06182A', WHT = '#FFFFFF';
+// ---- paleta / constantes do desenho (inalteradas) ----
+const C = '#00C2FF', EYE = '#EAF6FF', PUP = '#06182A', WHT = '#FFFFFF';
 const VB = '-20 0 260 224';
 const rad = d => d * Math.PI / 180;
 const f1 = n => n.toFixed(1);
+const f2 = n => n.toFixed(2);
 const lerp = (a, b, p) => a + (b - a) * p;
+const clamp = (v, lo, hi) => v < lo ? lo : (v > hi ? hi : v);
 const ease = p => p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
-const FR = 40;                 // "raio" da face p/ projetar as feicoes na esfera
-const THETA_MAX = rad(8);      // amplitude maxima da virada (graus) - bem sutil
+const FR = 40;
+const THETA_MAX = rad(8);
+
+// ============================================================
+// RIG: a camada de controle. Cada canal = um "botao" continuo.
+// O DESENHO le estes valores; os DRIVERS (schedule, audio, springs)
+// escrevem neles. Contrato completo em avatar_rig.schema.json.
+// ============================================================
+const REST = {
+  mouth_open: 0, mouth_round: 0, mouth_width: 0.5, mouth_corner: 0,
+  eye_open_L: 1, eye_open_R: 1, eye_smile: 0, eye_squint: 0, pupil_dilate: 0.5, gaze_x: 0, gaze_y: 0,
+  brow_raise_L: 0.25, brow_raise_R: 0.25, brow_angle_L: 0, brow_angle_R: 0, brow_micro: 0,
+  head_yaw: 0, head_pitch: 0, head_roll: 0,
+  body_bob: 0, body_squash: 0,
+  armR_raise: 0, armR_extend: 0, armL_raise: 0, armL_extend: 0, hand_open_R: 0.5, hand_open_L: 0.5,
+  radar_sweep: 0, dish_tilt: 0
+};
+function rigRest() { return Object.assign({}, REST); }
 
 // ---------- maos / dedos ----------
 function fingers(wx, wy, base, spread, count, length) {
@@ -29,59 +48,27 @@ function hand(wx, wy, base, length, spread) {
   return fingers(wx, wy, base, spread, 4, length) + fingers(wx, wy, base - 60, 0, 1, length * 0.7);
 }
 
-// ---------- braco parametrico (ombro -> cotovelo -> punho) ----------
+// ---------- braco parametrico ----------
 const UP_LEN = 24, FORE_LEN = 22;
-function armChain(sx, sy, shAng, elAng) {
+function armChain(sx, sy, shAng, elAng, handOpen) {
   const sa = rad(shAng), ea = rad(elAng);
   const ex = sx + UP_LEN * Math.cos(sa), ey = sy + UP_LEN * Math.sin(sa);
   const wx = ex + FORE_LEN * Math.cos(ea), wy = ey + FORE_LEN * Math.sin(ea);
   const arm = '<path d="M' + f1(sx) + ',' + f1(sy) + ' Q' + f1(ex) + ',' + f1(ey) + ' ' + f1(wx) + ',' + f1(wy) + '" fill="none" stroke="' + C + '" stroke-width="3.2" stroke-linecap="round"/>';
-  return arm + hand(wx, wy, elAng, 20, 46);
+  const spread = lerp(10, 58, clamp(handOpen, 0, 1));
+  return arm + hand(wx, wy, elAng, 20, spread);
 }
 const R_SH = [166, 150], L_SH = [54, 150];
 
-// Mascote fica no canto inferior-esquerdo: os gestos vao pra DIREITA (espaco livre).
-// O braco esquerdo descansa recolhido junto ao corpo (gesticular pra esquerda sairia da tela).
-const A = {
-  idle:      { rs: 84,  re: 96,  ls: 96,  le: 84 },
-  wave:      { rs: -8,  re: -30, ls: 96,  le: 84 },
-  point:     { rs: -18, re: -26, ls: 96,  le: 84 },
-  celebrate: { rs: -62, re: -78, ls: 242, le: 258 },
-  open:      { rs: 22,  re: 6,   ls: 96,  le: 84 }
-};
-const GSEQ = [A.wave, A.point, A.open];
-
-// ----- fallback (sem roteiro): gestos por tempo fixo -----
-function armKeyframes(dur) {
-  const kf = [{ t: 0, p: A.idle }];
-  let tt = 2.5, gi = 0;
-  while (tt < dur) {
-    kf.push({ t: tt,        p: A.idle });
-    kf.push({ t: tt + 0.55, p: GSEQ[gi % GSEQ.length] });
-    kf.push({ t: tt + 1.7,  p: GSEQ[gi % GSEQ.length] });
-    kf.push({ t: tt + 2.3,  p: A.idle });
-    tt += 4.6; gi++;
-  }
-  kf.push({ t: dur + 1, p: A.idle });
-  return kf;
-}
-function armAnglesAt(t, kf) {
-  let i = 0;
-  for (let k = 0; k < kf.length - 1; k++) if (kf[k].t <= t) i = k;
-  const a = kf[i], b = kf[Math.min(i + 1, kf.length - 1)];
-  let p = b.t > a.t ? (t - a.t) / (b.t - a.t) : 1;
-  p = ease(Math.max(0, Math.min(1, p)));
-  return {
-    rs: lerp(a.p.rs, b.p.rs, p), re: lerp(a.p.re, b.p.re, p),
-    ls: lerp(a.p.ls, b.p.ls, p), le: lerp(a.p.le, b.p.le, p)
-  };
-}
-function arms(t, kf) {
-  const a = armAnglesAt(t, kf);
-  const sway1 = 2.2 * Math.sin(2 * Math.PI * t / 3.5);
-  const sway2 = 2.4 * Math.sin(2 * Math.PI * t / 3.1 + 1);
-  return armChain(R_SH[0], R_SH[1], a.rs + sway1, a.re + sway2)
-    + armChain(L_SH[0], L_SH[1], a.ls - sway1, a.le - sway2);
+// raise/extend normalizados (0..1) -> angulos (idle -> elevado), faixas das poses originais.
+// Mascote no canto esq.: braco direito gesticula pra direita; esquerdo descansa recolhido.
+function armsSvg(r) {
+  const shR = lerp(84, -24, clamp(r.armR_raise, 0, 1));
+  const elR = lerp(96, -28, clamp(r.armR_extend, 0, 1));
+  const shL = lerp(96, 250, clamp(r.armL_raise, 0, 1));
+  const elL = lerp(84, 258, clamp(r.armL_extend, 0, 1));
+  return armChain(R_SH[0], R_SH[1], shR, elR, r.hand_open_R)
+    + armChain(L_SH[0], L_SH[1], shL, elL, r.hand_open_L);
 }
 
 // ---------- defs (gradientes 3D) ----------
@@ -95,10 +82,11 @@ function defs() {
 }
 
 // ---------- corpo / antena / radar ----------
-function body() {
+function body(dishTilt) {
+  const dishRot = -32 + clamp(dishTilt, -1, 1) * 16; // tilt da parabolica (follow-through)
   return '<ellipse cx="110" cy="184" rx="50" ry="11" fill="#000000" fill-opacity="0.42" filter="url(#soft)"/>'
     + '<line x1="110" y1="48" x2="110" y2="30" stroke="' + C + '" stroke-width="3" stroke-linecap="round"/>'
-    + '<g transform="rotate(-32 110 26)">'
+    + '<g transform="rotate(' + f1(dishRot) + ' 110 26)">'
     + '<ellipse cx="110" cy="26" rx="13" ry="5.5" fill="#0e2d42" stroke="url(#rim)" stroke-width="2.5"/>'
     + '<line x1="110" y1="26" x2="110" y2="14" stroke="' + C + '" stroke-width="1.8" stroke-linecap="round"/>'
     + '<circle cx="110" cy="13" r="2.6" fill="' + C + '"/>'
@@ -117,31 +105,26 @@ function sweep(ang) {
     + '<line x1="110" y1="112" x2="' + f1(x) + '" y2="' + f1(y) + '" stroke="' + C + '" stroke-opacity=".6" stroke-width="2"/>';
 }
 
-// ---------- expressoes (sobrancelha + olho + boca) ----------
-// arch=curvatura | tilt=inclinacao | by=desloc vertical | eye=estilo | es=escala olho
-// asym=levantar so a direita | mr=boost de "boca redonda" (surpresa)
-const EXPR = {
-  neutral: { arch: 2.5, tilt: 0,  by: 0,  eye: 'round', es: 1.00, asym: 0, mr: 0 },
-  raised:  { arch: 3.6, tilt: 2,  by: 5,  eye: 'round', es: 1.12, asym: 0, mr: 0.28 },
-  happy:   { arch: 2.2, tilt: 0,  by: 3,  eye: 'happy', es: 1.00, asym: 0, mr: 0 },
-  curious: { arch: 2.0, tilt: 6,  by: 2,  eye: 'round', es: 1.02, asym: 6, mr: 0.08 },
-  focused: { arch: 1.5, tilt: -6, by: -1, eye: 'round', es: 0.94, asym: 0, mr: 0 }
-};
-const EXPR_LIST = ['raised', 'curious', 'focused', 'neutral'];
-
+// ---------- feicoes (leem o rig) ----------
 function brow(cx, byBase, arch, tilt, fx) {
   fx = fx || 1; const hw = 10 * fx;
   const d = 'M' + f1(cx - hw) + ',' + f1(byBase) + ' Q' + f1(cx) + ',' + f1(byBase - arch) + ' ' + f1(cx + hw) + ',' + f1(byBase);
   return '<g transform="rotate(' + tilt.toFixed(2) + ' ' + f1(cx) + ' ' + f1(byBase) + ')"><path d="' + d + '" fill="none" stroke="' + C + '" stroke-width="2.6" stroke-linecap="round"/></g>';
 }
-function eyeRound(cx, eyeOpen, es, fx) {
+function eyeRound(cx, eyeOpen, es, fx, r) {
   fx = fx || 1;
-  const ry = Math.max(0.6, 9 * eyeOpen * es), rx = 9 * es * fx, pry = Math.max(0, 4.5 * eyeOpen);
-  const cxs = cx.toFixed(2);
-  let s = '<ellipse cx="' + cxs + '" cy="109" rx="' + rx.toFixed(2) + '" ry="' + ry.toFixed(2) + '" fill="url(#eyeg)"/>';
-  s += '<ellipse cx="' + cxs + '" cy="109" rx="' + rx.toFixed(2) + '" ry="' + ry.toFixed(2) + '" fill="none" stroke="#8fd6f0" stroke-opacity="0.5" stroke-width="0.8"/>';
-  if (pry > 0.2) s += '<ellipse cx="' + cxs + '" cy="109.5" rx="' + (4 * fx).toFixed(2) + '" ry="' + pry.toFixed(2) + '" fill="' + PUP + '"/>';
-  if (eyeOpen > 0.5) s += '<circle cx="' + (cx - 3.5 * fx).toFixed(2) + '" cy="105.5" r="2.4" fill="' + WHT + '"/><circle cx="' + (cx + 3 * fx).toFixed(2) + '" cy="112" r="1.1" fill="' + WHT + '" fill-opacity="0.6"/>';
+  const ry = Math.max(0.6, 9 * eyeOpen * es), rx = 9 * es * fx;
+  const cxs = f2(cx);
+  const dil = lerp(0.8, 1.5, clamp(r.pupil_dilate, 0, 1));
+  const gx = clamp(r.gaze_x, -1, 1) * 3.2 * fx, gy = clamp(r.gaze_y, -1, 1) * 2.6;
+  let s = '<ellipse cx="' + cxs + '" cy="109" rx="' + f2(rx) + '" ry="' + f2(ry) + '" fill="url(#eyeg)"/>';
+  s += '<ellipse cx="' + cxs + '" cy="109" rx="' + f2(rx) + '" ry="' + f2(ry) + '" fill="none" stroke="#8fd6f0" stroke-opacity="0.5" stroke-width="0.8"/>';
+  const pry = Math.max(0, 4.5 * eyeOpen) * dil;
+  if (pry > 0.2) {
+    const prx = 4 * fx * dil;
+    s += '<ellipse cx="' + f2(cx + gx) + '" cy="' + f2(109.5 + gy) + '" rx="' + f2(prx) + '" ry="' + f2(pry) + '" fill="' + PUP + '"/>';
+  }
+  if (eyeOpen > 0.5) s += '<circle cx="' + f2(cx - 3.5 * fx + gx) + '" cy="' + f2(105.5 + gy) + '" r="2.4" fill="' + WHT + '"/>';
   return s;
 }
 function eyeHappy(cx, eyeOpen, fx) {
@@ -150,99 +133,118 @@ function eyeHappy(cx, eyeOpen, fx) {
   const d = 'M' + (cx - w).toFixed(2) + ',108 Q' + cx.toFixed(2) + ',' + f1(108 + depth) + ' ' + (cx + w).toFixed(2) + ',108';
   return '<path d="' + d + '" fill="none" stroke="' + EYE + '" stroke-width="3.4" stroke-linecap="round"/>';
 }
-function mouth(opn, rnd, cx, fx) {
+function mouth(r, cx, fx) {
   cx = (cx == null ? 110 : cx); fx = fx || 1;
-  const w = 14 - 5 * rnd, top = -4 * opn - 0.6 * rnd, up = top + 4, bot = 1 + 18 * opn - 3 * rnd;
-  return '<g transform="translate(' + cx.toFixed(2) + ',140) scale(' + fx.toFixed(3) + ',1)"><path d="M' + f1(-w) + ',' + f1(top) + ' Q0,' + f1(up) + ' ' + f1(w) + ',' + f1(top) + ' Q0,' + f1(bot) + ' ' + f1(-w) + ',' + f1(top) + ' Z" fill="' + C + '"/></g>';
+  const opn = clamp(r.mouth_open, 0, 1), rnd = clamp(r.mouth_round, 0, 1), corner = clamp(r.mouth_corner, -1, 1);
+  const w = (14 - 5 * rnd) * lerp(0.85, 1.05, clamp(r.mouth_width, 0, 1));
+  const top = -4 * opn - 0.6 * rnd, up = top + 4, bot = 1 + 18 * opn - 3 * rnd;
+  const cl = -corner * 5; // sorriso (+) sobe os cantos; desgosto (-) abaixa
+  return '<g transform="translate(' + f2(cx) + ',140) scale(' + f2(fx) + ',1)"><path d="M' + f1(-w) + ',' + f1(top + cl) + ' Q0,' + f1(up) + ' ' + f1(w) + ',' + f1(top + cl) + ' Q0,' + f1(bot) + ' ' + f1(-w) + ',' + f1(top + cl) + ' Z" fill="' + C + '"/></g>';
 }
-function face(p, eyeOpen, browMicro, opn, rnd, yaw) {
+
+function face(r) {
+  const yaw = clamp(r.head_yaw, -1, 1);
   const theta = yaw * THETA_MAX;
-  const byBase = 93 - p.by - browMicro;
   const proj = off => { const phi = Math.asin(off / FR); return { x: 110 + FR * Math.sin(phi + theta), s: Math.cos(phi + theta) / Math.cos(phi) }; };
   const le = proj(-18), re = proj(18), mo = proj(0);
-  let s = brow(le.x, byBase, p.arch, -p.tilt, le.s) + brow(re.x, byBase - p.asym, p.arch, p.tilt, re.s);
-  if (p.eye === 'happy') {
-    s += eyeHappy(le.x, eyeOpen, le.s) + eyeHappy(re.x, eyeOpen, re.s);
-  } else {
-    s += eyeRound(le.x, eyeOpen, p.es, le.s) + eyeRound(re.x, eyeOpen, p.es, re.s);
-  }
-  const rnd2 = Math.min(1, rnd + (p.mr || 0));
-  s += mouth(opn, rnd2, mo.x, mo.s);
+  const bm = r.brow_micro;
+  const byL = 93 - clamp(r.brow_raise_L, 0, 1) * 14 - bm;
+  const byR = 93 - clamp(r.brow_raise_R, 0, 1) * 14 - bm;
+  const archL = lerp(1.5, 3.8, clamp(r.brow_raise_L, 0, 1));
+  const archR = lerp(1.5, 3.8, clamp(r.brow_raise_R, 0, 1));
+  const tiltL = -clamp(r.brow_angle_L, -1, 1) * 8;
+  const tiltR = clamp(r.brow_angle_R, -1, 1) * 8;
+  let s = brow(le.x, byL, archL, tiltL, le.s) + brow(re.x, byR, archR, tiltR, re.s);
+  const sq = clamp(r.eye_squint, 0, 1);
+  const oL = clamp(r.eye_open_L, 0, 1) * (1 - 0.55 * sq);
+  const oR = clamp(r.eye_open_R, 0, 1) * (1 - 0.55 * sq);
+  const smile = clamp(r.eye_smile, 0, 1);
+  if (smile < 0.98) s += '<g opacity="' + f2(1 - smile) + '">' + eyeRound(le.x, oL, 1.0, le.s, r) + eyeRound(re.x, oR, 1.0, re.s, r) + '</g>';
+  if (smile > 0.02) s += '<g opacity="' + f2(smile) + '">' + eyeHappy(le.x, Math.max(oL, 0.3), le.s) + eyeHappy(re.x, Math.max(oR, 0.3), re.s) + '</g>';
+  s += mouth(r, mo.x, mo.s);
   return s;
 }
 
-// ----- fallback (sem roteiro): expressoes trocam nas piscadas -----
-function exprKeyframes(blinks) {
-  const kf = [{ t: 0, name: 'neutral' }];
-  let ei = 0;
-  for (let k = 0; k < blinks.length; k++) {
-    if (k % 2 === 1) { kf.push({ t: blinks[k], name: EXPR_LIST[ei % EXPR_LIST.length] }); ei++; }
-  }
-  return kf;
-}
-function exprAt(t, kf) {
-  let i = 0;
-  for (let k = 0; k < kf.length; k++) if (kf[k].t <= t) i = k;
-  const cur = EXPR[kf[i].name];
-  const prev = EXPR[kf[Math.max(0, i - 1)].name];
-  const local = t - kf[i].t;
-  const pe = ease(Math.max(0, Math.min(1, local / 0.5)));
-  return {
-    arch: lerp(prev.arch, cur.arch, pe),
-    tilt: lerp(prev.tilt, cur.tilt, pe),
-    by:   lerp(prev.by,   cur.by,   pe),
-    asym: lerp(prev.asym, cur.asym, pe),
-    mr:   lerp(prev.mr,   cur.mr,   pe),
-    eye:  cur.eye,
-    es:   cur.es
-  };
+function frameSVG(r) {
+  const bob = r.body_bob;
+  const squash = clamp(r.body_squash, -1, 1);
+  const sY = 1 + squash * 0.16, sX = 1 - squash * 0.10;
+  const roll = clamp(r.head_roll, -1, 1) * 8;
+  const pitch = clamp(r.head_pitch, -1, 1) * 6;
+  const inner = body(r.dish_tilt) + sweep(r.radar_sweep) + armsSvg(r);
+  const faceG = '<g transform="rotate(' + f2(roll) + ' 110 112) translate(0 ' + f2(pitch) + ')">' + face(r) + '</g>';
+  const bodyG = '<g transform="translate(0 ' + f2(bob) + ') translate(110 176) scale(' + f2(sX) + ' ' + f2(sY) + ') translate(-110 -176)">' + inner + faceG + '</g>';
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + VB + '">' + defs() + bodyG + '</svg>';
 }
 
 // ============================================================
-// AGENDA DIRIGIDA PELO ROTEIRO (tempos das palavras do WhisperX)
-// Beats = inicio de cada frase falada (apos pausa). Em cada beat:
-//  - troca a expressao (gancho=surpresa, fim=sorriso, meio=alterna)
-//  - dispara um gesto pra direita (com cooldown, sem empilhar)
-//  - pisca (mascara a troca de estilo de olho)
-// Palavras enfatizadas (longas) ganham um aceno de cabeca (nod).
+// DRIVERS
 // ============================================================
+// Presets de expressao em ESPACO DO RIG (alvos, nao "trocas de cara").
+const EXPR_RIG = {
+  neutral: { brow_raise_L: 0.25, brow_raise_R: 0.25, brow_angle_L: 0, brow_angle_R: 0, eye_smile: 0, eye_squint: 0, mouth_corner: 0, pupil_dilate: 0.5, head_roll: 0, body_squash: 0 },
+  raised:  { brow_raise_L: 0.9, brow_raise_R: 0.9, brow_angle_L: 0.2, brow_angle_R: 0.2, eye_smile: 0, eye_squint: 0, mouth_corner: 0.1, pupil_dilate: 0.9, head_roll: 0, body_squash: -0.12 },
+  happy:   { brow_raise_L: 0.4, brow_raise_R: 0.4, brow_angle_L: 0, brow_angle_R: 0, eye_smile: 0.9, eye_squint: 0.1, mouth_corner: 0.8, pupil_dilate: 0.5, head_roll: 0.05, body_squash: 0.05 },
+  curious: { brow_raise_L: 0.35, brow_raise_R: 0.65, brow_angle_L: 0.1, brow_angle_R: 0.35, eye_smile: 0, eye_squint: 0.1, mouth_corner: 0.1, pupil_dilate: 0.55, head_roll: 0.3, body_squash: 0 },
+  focused: { brow_raise_L: 0.1, brow_raise_R: 0.1, brow_angle_L: -0.45, brow_angle_R: -0.45, eye_smile: 0, eye_squint: 0.45, mouth_corner: -0.05, pupil_dilate: 0.45, head_roll: -0.05, body_squash: 0 }
+};
+const GEST_RIG = {
+  idle:  { armR_raise: 0, armR_extend: 0, hand_open_R: 0.5 },
+  wave:  { armR_raise: 0.95, armR_extend: 1.0, hand_open_R: 0.9 },
+  point: { armR_raise: 0.98, armR_extend: 0.95, hand_open_R: 0.1 },
+  open:  { armR_raise: 0.6, armR_extend: 0.72, hand_open_R: 1.0 }
+};
+const EXPR_KEYS = ['brow_raise_L', 'brow_raise_R', 'brow_angle_L', 'brow_angle_R', 'eye_smile', 'eye_squint', 'mouth_corner', 'pupil_dilate', 'head_roll', 'body_squash'];
+function blendExpr(a, b, p) {
+  const o = {};
+  for (const k of EXPR_KEYS) o[k] = lerp(a[k] != null ? a[k] : REST[k], b[k] != null ? b[k] : REST[k], p);
+  return o;
+}
+function exprTargetAt(t, eKf) {
+  let i = 0; for (let k = 0; k < eKf.length; k++) if (eKf[k].t <= t) i = k;
+  const cur = EXPR_RIG[eKf[i].name] || EXPR_RIG.neutral;
+  const prev = EXPR_RIG[eKf[Math.max(0, i - 1)].name] || EXPR_RIG.neutral;
+  const pe = ease(clamp((t - eKf[i].t) / 0.5, 0, 1));
+  return blendExpr(prev, cur, pe);
+}
+function gestTargetAt(t, gKf) {
+  let i = 0; for (let k = 0; k < gKf.length; k++) if (gKf[k].t <= t) i = k;
+  const cur = GEST_RIG[gKf[i].name] || GEST_RIG.idle;
+  const prev = GEST_RIG[gKf[Math.max(0, i - 1)].name] || GEST_RIG.idle;
+  const pe = ease(clamp((t - gKf[i].t) / 0.45, 0, 1));
+  return {
+    armR_raise: lerp(prev.armR_raise, cur.armR_raise, pe),
+    armR_extend: lerp(prev.armR_extend, cur.armR_extend, pe),
+    hand_open_R: lerp(prev.hand_open_R, cur.hand_open_R, pe)
+  };
+}
+
+// Agenda dirigida pelo roteiro (tempos das palavras do WhisperX).
 function buildSchedule(words, dur) {
-  const GAP = 0.35;
-  const beats = [];
-  let prevEnd = -99;
+  const GAP = 0.35, beats = []; let prevEnd = -99;
   for (let i = 0; i < words.length; i++) {
-    const w = words[i];
-    if (w.start == null) continue;
+    const w = words[i]; if (w.start == null) continue;
     if (i === 0 || (w.start - prevEnd) > GAP) beats.push(w.start);
     prevEnd = (w.end != null ? w.end : w.start);
   }
-  const GSEQ2 = [A.wave, A.point, A.open];
-  const ESEQ = ['curious', 'focused', 'neutral', 'raised'];
-  const gKf = [{ t: 0, p: A.idle }];
-  const eKf = [{ t: 0, name: 'neutral' }];
-  let blinks = [];
+  const GSEQ = ['wave', 'point', 'open'], ESEQ = ['curious', 'focused', 'neutral', 'raised'];
+  const eKf = [{ t: 0, name: 'neutral' }], gKf = [{ t: 0, name: 'idle' }]; let blinks = [];
   let gi = 0, lastG = -99;
   for (let b = 0; b < beats.length; b++) {
-    const t = beats[b];
-    let name;
-    if (b === 0) name = 'raised';
-    else if (t > dur * 0.80) name = 'happy';
-    else name = ESEQ[b % ESEQ.length];
-    eKf.push({ t: t, name: name });
-    blinks.push(t);
+    const t = beats[b]; let name;
+    if (b === 0) name = 'raised'; else if (t > dur * 0.80) name = 'happy'; else name = ESEQ[b % ESEQ.length];
+    eKf.push({ t: t, name: name }); blinks.push(t);
     if (t - lastG > 2.3) {
-      const g = (b === 0) ? A.wave : GSEQ2[gi % GSEQ2.length];
-      gi++;
-      gKf.push({ t: Math.max(0.01, t - 0.05), p: A.idle });
-      gKf.push({ t: t + 0.45, p: g });
-      gKf.push({ t: t + 1.40, p: g });
-      gKf.push({ t: t + 1.90, p: A.idle });
+      const g = (b === 0) ? 'wave' : GSEQ[gi % GSEQ.length]; gi++;
+      gKf.push({ t: Math.max(0.01, t - 0.05), name: 'idle' });
+      gKf.push({ t: t + 0.45, name: g });
+      gKf.push({ t: t + 1.40, name: g });
+      gKf.push({ t: t + 1.90, name: 'idle' });
       lastG = t;
     }
   }
-  gKf.push({ t: dur + 1, p: A.idle });
-  const nods = [];
-  let lastN = -99;
+  gKf.push({ t: dur + 1, name: 'idle' });
+  const nods = []; let lastN = -99;
   for (const w of words) {
     if (w.start == null) continue;
     const len = (w.word || '').trim().length;
@@ -252,42 +254,68 @@ function buildSchedule(words, dur) {
   for (let tb = 1.4; tb < dur; tb += 3.0) blinks.push(tb);
   blinks.sort((a, b) => a - b);
   const dedup = [];
-  for (const tb of blinks) { if (!dedup.length || tb - dedup[dedup.length - 1] > 0.45) dedup.push(tb); }
-  return { gKf: gKf, eKf: eKf, blinks: dedup, nods: nods };
+  for (const tb of blinks) if (!dedup.length || tb - dedup[dedup.length - 1] > 0.45) dedup.push(tb);
+  return { eKf: eKf, gKf: gKf, blinks: dedup, nods: nods };
 }
-function nodAt(t, nods) {
-  if (!nods || !nods.length) return 0;
-  let d = 0;
-  for (const tn of nods) {
-    const x = t - tn;
-    if (x >= 0 && x < 0.34) d += 3.4 * Math.sin(Math.PI * x / 0.34);
+function buildScheduleFallback(dur) {
+  const eKf = [{ t: 0, name: 'neutral' }], gKf = [{ t: 0, name: 'idle' }]; let blinks = [];
+  for (let tb = 1.4; tb < dur; tb += 3.0) blinks.push(tb);
+  const ESEQ = ['neutral', 'curious', 'focused', 'raised']; let ei = 0;
+  for (let k = 0; k < blinks.length; k++) if (k % 2 === 1) { eKf.push({ t: blinks[k], name: ESEQ[ei % ESEQ.length] }); ei++; }
+  const GSEQ = ['wave', 'point', 'open']; let tt = 2.5, gi = 0;
+  while (tt < dur) {
+    gKf.push({ t: tt, name: 'idle' });
+    gKf.push({ t: tt + 0.55, name: GSEQ[gi % GSEQ.length] });
+    gKf.push({ t: tt + 1.7, name: GSEQ[gi % GSEQ.length] });
+    gKf.push({ t: tt + 2.3, name: 'idle' });
+    tt += 4.6; gi++;
   }
-  return d;
+  gKf.push({ t: dur + 1, name: 'idle' });
+  blinks.sort((a, b) => a - b);
+  return { eKf: eKf, gKf: gKf, blinks: blinks, nods: [] };
 }
 
-// virada de cabeca OCASIONAL e bem pequena
+// virada de cabeca ocasional (alvo p/ a mola)
 function headYaw(t) {
   const PERIOD = 7.0, MAG = 0.6, START = 1.2, IN = 0.5, HOLD = 0.6, OUT = 0.7;
-  const idx = Math.floor(t / PERIOD);
-  const local = t - idx * PERIOD;
-  const dir = (idx % 2 === 0) ? 1 : -1;
+  const idx = Math.floor(t / PERIOD), local = t - idx * PERIOD, dir = (idx % 2 === 0) ? 1 : -1;
   let e = 0;
   if (local >= START && local < START + IN) e = ease((local - START) / IN);
   else if (local >= START + IN && local < START + IN + HOLD) e = 1;
   else if (local >= START + IN + HOLD && local < START + IN + HOLD + OUT) e = 1 - ease((local - START - IN - HOLD) / OUT);
   return dir * MAG * e;
 }
-
-function frameSVG(armsSvg, facePr, opn, rnd, eyeOpen, browMicro, bob, ang, yaw) {
-  const inner = body() + sweep(ang) + armsSvg + face(facePr, eyeOpen, browMicro, opn, rnd, yaw);
-  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + VB + '">' + defs() + '<g transform="translate(0,' + bob.toFixed(2) + ')">' + inner + '</g></svg>';
+// nod = alvo de pitch durante a palavra enfatizada; a mola gera o "balanco" com overshoot
+function nodTarget(t, nods) {
+  if (!nods) return 0;
+  for (const tn of nods) if (t >= tn && t < tn + 0.22) return 0.7;
+  return 0;
+}
+// micro-saccades + leve deriva do olhar (vida de fundo)
+function gazeAt(t, eKf) {
+  let gx = 0.10 * Math.sin(2 * Math.PI * t / 5.3), gy = 0.06 * Math.sin(2 * Math.PI * t / 6.7 + 1);
+  for (let b = 0; b < eKf.length; b++) {
+    const x = t - eKf[b].t;
+    if (x >= 0 && x < 0.6) { const dir = ((b * 37) % 7 - 3) / 3; gx += dir * 0.22 * (1 - x / 0.6); }
+  }
+  return { x: clamp(gx, -1, 1), y: clamp(gy, -1, 1) };
 }
 
+// ---------- camada de PRINCIPIOS: mola amortecida (overshoot/lag) ----------
+function springTrack(targets, fps, omega, zeta) {
+  const dt = 1 / fps, n = targets.length, out = new Array(n);
+  let x = targets[0] || 0, v = 0;
+  for (let i = 0; i < n; i++) {
+    const a = omega * omega * (targets[i] - x) - 2 * zeta * omega * v;
+    v += a * dt; x += v * dt; out[i] = x;
+  }
+  return out;
+}
+
+// ---------- audio -> envelope (boca por amplitude; viseme entra no estagio 3) ----------
 function envelopeFromWav(wavPath, fps) {
   const buf = fs.readFileSync(wavPath);
-  let off = 12;
-  let sr = buf.readUInt32LE(24);
-  let dataOff = 44, dataLen = buf.length - 44;
+  let off = 12, sr = buf.readUInt32LE(24), dataOff = 44, dataLen = buf.length - 44;
   while (off + 8 <= buf.length) {
     const id = buf.toString('ascii', off, off + 4);
     const sz = buf.readUInt32LE(off + 4);
@@ -295,10 +323,8 @@ function envelopeFromWav(wavPath, fps) {
     if (id === 'data') { dataOff = off + 8; dataLen = sz; break; }
     off += 8 + sz + (sz & 1);
   }
-  const nSamp = Math.floor(dataLen / 2);
-  const total = nSamp / sr;
-  const nf = Math.max(1, Math.round(total * fps));
-  const win = Math.floor(sr / fps);
+  const nSamp = Math.floor(dataLen / 2), total = nSamp / sr;
+  const nf = Math.max(1, Math.round(total * fps)), win = Math.floor(sr / fps);
   const env = [];
   for (let i = 0; i < nf; i++) {
     let a = i * win, b = Math.min(nSamp, a + win), acc = 0, cnt = 0;
@@ -310,41 +336,57 @@ function envelopeFromWav(wavPath, fps) {
 }
 
 function renderFrames(opts) {
-  const fps = opts.fps || 25;
-  const width = opts.width || 720;
-  const outDir = opts.outDir;
+  const fps = opts.fps || 25, width = opts.width || 720, outDir = opts.outDir;
   fs.mkdirSync(outDir, { recursive: true });
   const env = envelopeFromWav(opts.wavPath, fps);
-  const nf = env.length;
-  const dur = nf / fps;
+  const nf = env.length, dur = nf / fps;
 
+  // boca por amplitude
   const opn = new Array(nf); let prev = 0;
-  for (let i = 0; i < nf; i++) { const tgt = env[i]; const k = tgt > prev ? 0.55 : 0.28; prev = prev + k * (tgt - prev); opn[i] = prev; }
-  const rnd = opn.map(o => o > 0.2 ? Math.max(0, Math.min(1, (0.55 - o) * 1.3)) : 0);
+  for (let i = 0; i < nf; i++) { const tgt = env[i], k = tgt > prev ? 0.55 : 0.28; prev = prev + k * (tgt - prev); opn[i] = prev; }
+  const rndArr = opn.map(o => o > 0.2 ? clamp((0.55 - o) * 1.3, 0, 1) : 0);
 
-  // Agenda dirigida pelo ROTEIRO quando ha tempos de palavras; senao, ciclo por tempo.
-  let armKf, exprKf, blinks, nods;
-  if (opts.words && opts.words.length) {
-    const sch = buildSchedule(opts.words, dur);
-    armKf = sch.gKf; exprKf = sch.eKf; blinks = sch.blinks; nods = sch.nods;
-  } else {
-    armKf = armKeyframes(dur);
-    blinks = []; for (let tb = 1.4; tb < dur; tb += 3.0) blinks.push(tb);
-    exprKf = exprKeyframes(blinks);
-    nods = [];
-  }
+  const sch = (opts.words && opts.words.length) ? buildSchedule(opts.words, dur) : buildScheduleFallback(dur);
+  const eKf = sch.eKf, gKf = sch.gKf, blinks = sch.blinks, nods = sch.nods;
   const eyeAt = t => { let e = 1; for (const tb of blinks) e = Math.min(e, 1 - Math.exp(-Math.pow((t - tb) / 0.07, 2))); return Math.max(0, e); };
 
+  // passo 1: amostra os ALVOS por frame
+  const Tp = new Array(nf), Ty = new Array(nf), Tr = new Array(nf), TaR = new Array(nf), TeR = new Array(nf);
+  const frameRig = new Array(nf);
   for (let i = 0; i < nf; i++) {
     const t = i / fps;
-    const eyeOpen = eyeAt(t);
-    const browMicro = 1.2 * opn[i] + 0.5 * Math.sin(2 * Math.PI * t / 4 + 1);
-    const bob = 1.6 * Math.sin(2 * Math.PI * t / 3) + nodAt(t, nods);
-    const ang = (t * 72) % 360;
-    const armsSvg = arms(t, armKf);
-    const facePr = exprAt(t, exprKf);
-    const yaw = headYaw(t);
-    const svg = frameSVG(armsSvg, facePr, opn[i], rnd[i], eyeOpen, browMicro, bob, ang, yaw);
+    const ex = exprTargetAt(t, eKf), ge = gestTargetAt(t, gKf), gz = gazeAt(t, eKf), eo = eyeAt(t);
+    const r = rigRest();
+    r.brow_raise_L = ex.brow_raise_L; r.brow_raise_R = ex.brow_raise_R;
+    r.brow_angle_L = ex.brow_angle_L; r.brow_angle_R = ex.brow_angle_R;
+    r.eye_smile = ex.eye_smile; r.eye_squint = ex.eye_squint;
+    r.mouth_corner = ex.mouth_corner; r.pupil_dilate = ex.pupil_dilate; r.body_squash = ex.body_squash;
+    r.mouth_open = opn[i]; r.mouth_round = rndArr[i];
+    r.eye_open_L = eo; r.eye_open_R = eo;
+    r.gaze_x = gz.x; r.gaze_y = gz.y;
+    r.brow_micro = 1.2 * opn[i] + 0.5 * Math.sin(2 * Math.PI * t / 4 + 1);
+    r.body_bob = 1.6 * Math.sin(2 * Math.PI * t / 3);
+    r.radar_sweep = (t * 72) % 360;
+    r.hand_open_R = ge.hand_open_R;
+    Tp[i] = nodTarget(t, nods); Ty[i] = headYaw(t); Tr[i] = ex.head_roll;
+    TaR[i] = ge.armR_raise; TeR[i] = ge.armR_extend;
+    frameRig[i] = r;
+  }
+  // passo 2: aplica molas (overshoot na cabeca/bracos; antena segue a cabeca com atraso)
+  const spP = springTrack(Tp, fps, 16, 0.45);
+  const spY = springTrack(Ty, fps, 12, 0.50);
+  const spR = springTrack(Tr, fps, 14, 0.55);
+  const spAR = springTrack(TaR, fps, 13, 0.50);
+  const spER = springTrack(TeR, fps, 13, 0.50);
+  const spDish = springTrack(spY, fps, 9, 0.70);
+  for (let i = 0; i < nf; i++) {
+    const r = frameRig[i];
+    r.head_pitch = spP[i]; r.head_yaw = spY[i]; r.head_roll = spR[i];
+    r.armR_raise = spAR[i]; r.armR_extend = spER[i]; r.dish_tilt = spDish[i];
+  }
+  // passo 3: render
+  for (let i = 0; i < nf; i++) {
+    const svg = frameSVG(frameRig[i]);
     const sp = path.join(outDir, 's_' + String(i).padStart(5, '0') + '.svg');
     const pp = path.join(outDir, 'av_' + String(i).padStart(5, '0') + '.png');
     fs.writeFileSync(sp, svg);
