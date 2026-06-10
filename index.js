@@ -170,8 +170,10 @@ app.post('/render', async (req, res) => {
     // Legenda estilo amigo_dicas: UMA linha, agrupando quantas palavras couberem
     // na coluna ao lado do mascote (palavra longa fica sozinha; 2-3 curtas juntas).
     // O agrupamento respeita as pausas naturais (nao junta palavras de segmentos diferentes).
+    // CHARS_BUDGET reduzido de 12 -> 10: a linha cheia nasce mais estreita p/ nao
+    // tocar a coluna de UI da plataforma na direita (ver MarginR no estilo abaixo).
     const WORDS_MAX = 3;        // teto de palavras por tela
-    const CHARS_BUDGET = 12;    // ~ largura da coluna lateral na fonte atual (caracteres)
+    const CHARS_BUDGET = 10;    // ~ largura da coluna lateral (caracteres); 10 evita a linha cheia sob a UI da direita
     const phrases = [];
 
     if (whisperOutput.segments) {
@@ -207,13 +209,16 @@ app.post('/render', async (req, res) => {
     // Legenda numa LINHA so, na coluna a direita do mascote (MarginL alto desloca o
     // texto centralizado pra direita, liberando o canto onde fica o mascote). Karaoke
     // mantido (palavra ativa na cor do canal, resto branco).
+    // MarginR 160 (era 100): puxa o texto centralizado ~40px p/ a esquerda, afastando
+    // a linha cheia da coluna de UI da plataforma (icones curtir/comentar/salvar).
+    // Janela horizontal segura resultante: ~[466, 920].
     let assContent = '[Script Info]\n';
     assContent += 'ScriptType: v4.00+\n';
     assContent += 'PlayResX: 1080\n';
     assContent += 'PlayResY: 1920\n\n';
     assContent += '[V4+ Styles]\n';
     assContent += 'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n';
-    assContent += 'Style: Default,Arial,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,4,2,2,466,100,430,1\n\n';
+    assContent += 'Style: Default,Arial,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,4,2,2,466,160,430,1\n\n';
     assContent += '[Events]\n';
     assContent += 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n';
 
