@@ -160,7 +160,8 @@ function face(r) {
   const sq = clamp(r.eye_squint, 0, 1);
   const oL = clamp(r.eye_open_L, 0, 1) * (1 - 0.55 * sq);
   const oR = clamp(r.eye_open_R, 0, 1) * (1 - 0.55 * sq);
-  const smile = clamp(r.eye_smile, 0, 1);
+  // crossfade ESTREITO [0.4,0.6]: fora dessa faixa desenha so um estilo de olho (sem "fantasma" redondo+sorriso)
+  const smile = clamp((clamp(r.eye_smile, 0, 1) - 0.4) / 0.2, 0, 1);
   if (smile < 0.98) s += '<g opacity="' + f2(1 - smile) + '">' + eyeRound(le.x, oL, 1.0, le.s, r) + eyeRound(re.x, oR, 1.0, re.s, r) + '</g>';
   if (smile > 0.02) s += '<g opacity="' + f2(smile) + '">' + eyeHappy(le.x, Math.max(oL, 0.3), le.s) + eyeHappy(re.x, Math.max(oR, 0.3), re.s) + '</g>';
   s += mouth(r, mo.x, mo.s);
@@ -187,7 +188,7 @@ const EXPR_RIG = {
   neutral: { brow_raise_L: 0.25, brow_raise_R: 0.25, brow_angle_L: 0, brow_angle_R: 0, eye_smile: 0, eye_squint: 0, mouth_corner: 0, pupil_dilate: 0.5, head_roll: 0, body_squash: 0 },
   raised:  { brow_raise_L: 0.9, brow_raise_R: 0.9, brow_angle_L: 0.2, brow_angle_R: 0.2, eye_smile: 0, eye_squint: 0, mouth_corner: 0.1, pupil_dilate: 0.9, head_roll: 0, body_squash: -0.12 },
   happy:   { brow_raise_L: 0.4, brow_raise_R: 0.4, brow_angle_L: 0, brow_angle_R: 0, eye_smile: 0.7, eye_squint: 0.1, mouth_corner: 0.8, pupil_dilate: 0.5, head_roll: 0.05, body_squash: 0.05 },
-  curious: { brow_raise_L: 0.35, brow_raise_R: 0.65, brow_angle_L: 0.1, brow_angle_R: 0.35, eye_smile: 0, eye_squint: 0.1, mouth_corner: 0.1, pupil_dilate: 0.55, head_roll: 0.3, body_squash: 0 },
+  curious: { brow_raise_L: 0.35, brow_raise_R: 0.65, brow_angle_L: 0.1, brow_angle_R: 0.35, eye_smile: 0, eye_squint: 0.1, mouth_corner: 0.1, pupil_dilate: 0.55, head_roll: 0.2, body_squash: 0 },
   focused: { brow_raise_L: 0.1, brow_raise_R: 0.1, brow_angle_L: -0.45, brow_angle_R: -0.45, eye_smile: 0, eye_squint: 0.45, mouth_corner: -0.05, pupil_dilate: 0.45, head_roll: -0.05, body_squash: 0 }
 };
 const GEST_RIG = {
@@ -257,18 +258,14 @@ function buildSchedule(words, dur) {
   for (const w of words) {
     if (w.start == null) continue;
     const len = (w.word || '').trim().length;
-    const long = len >= 7 || ((w.end != null ? w.end : w.start) - w.start) >= 0.45;
-    if (long && (w.start - lastN) > 1.6) { nods.push(w.start); lastN = w.start; }
+    const long = len >= 8 || ((w.end != null ? w.end : w.start) - w.start) >= 0.5;
+    if (long && (w.start - lastN) > 2.6) { nods.push(w.start); lastN = w.start; }
   }
   for (let tb = 1.4; tb < dur; tb += 3.0) blinks.push(tb);
   blinks.sort((a, b) => a - b);
   const dedup = [];
-  for (const tb of blinks) if (!dedup.length || tb - dedup[dedup.length - 1] > 0.45) dedup.push(tb);
-  // piscadas duplas ocasionais (vida): a cada ~3a piscada, uma segunda rapida 0.17s depois
-  const withDoubles = dedup.slice();
-  for (let k = 0; k < dedup.length; k++) if (k % 3 === 2 && dedup[k] + 0.17 < dur) withDoubles.push(dedup[k] + 0.17);
-  withDoubles.sort((a, b) => a - b);
-  return { eKf: eKf, gKf: gKf, blinks: withDoubles, nods: nods };
+  for (const tb of blinks) if (!dedup.length || tb - dedup[dedup.length - 1] > 0.9) dedup.push(tb);
+  return { eKf: eKf, gKf: gKf, blinks: dedup, nods: nods };
 }
 function buildScheduleFallback(dur) {
   const eKf = [{ t: 0, name: 'neutral' }], gKf = [{ t: 0, name: 'idle' }]; let blinks = [];
@@ -285,10 +282,7 @@ function buildScheduleFallback(dur) {
   }
   gKf.push({ t: dur + 1, name: 'idle' });
   blinks.sort((a, b) => a - b);
-  const withD = blinks.slice();
-  for (let k = 0; k < blinks.length; k++) if (k % 3 === 2 && blinks[k] + 0.17 < dur) withD.push(blinks[k] + 0.17);
-  withD.sort((a, b) => a - b);
-  return { eKf: eKf, gKf: gKf, blinks: withD, nods: [] };
+  return { eKf: eKf, gKf: gKf, blinks: blinks, nods: [] };
 }
 
 // virada de cabeca ocasional (alvo p/ a mola)
@@ -304,7 +298,7 @@ function headYaw(t) {
 // nod = alvo de pitch durante a palavra enfatizada; a mola gera o "balanco" com overshoot
 function nodTarget(t, nods) {
   if (!nods) return 0;
-  for (const tn of nods) if (t >= tn && t < tn + 0.22) return 0.7;
+  for (const tn of nods) if (t >= tn && t < tn + 0.22) return 0.45;
   return 0;
 }
 // micro-saccades + leve deriva do olhar (vida de fundo)
@@ -361,6 +355,10 @@ function renderFrames(opts) {
   const opn = new Array(nf); let prev = 0;
   for (let i = 0; i < nf; i++) { const tgt = env[i], k = tgt > prev ? 0.55 : 0.28; prev = prev + k * (tgt - prev); opn[i] = prev; }
   const rndArr = opn.map(o => o > 0.2 ? clamp((0.55 - o) * 1.3, 0, 1) : 0);
+  // "esta falando" com liberacao lenta: micro-pausas entre palavras NAO contam como pausa
+  // (evita o sorriso de olho fechado piscar pra dentro/fora a cada respiro)
+  const talk = new Array(nf); let th = 0;
+  for (let i = 0; i < nf; i++) { th = opn[i] > th ? opn[i] : th * 0.96; talk[i] = th; }
 
   const sch = (opts.words && opts.words.length) ? buildSchedule(opts.words, dur) : buildScheduleFallback(dur);
   const eKf = sch.eKf, gKf = sch.gKf, blinks = sch.blinks, nods = sch.nods;
@@ -389,7 +387,7 @@ function renderFrames(opts) {
     r.mouth_open = opn[i]; r.mouth_round = rndArr[i];
     r.eye_open_L = eo; r.eye_open_R = eo;
     r.gaze_x = gz.x; r.gaze_y = gz.y;
-    r.brow_micro = 1.2 * opn[i] + 0.5 * Math.sin(2 * Math.PI * t / 4 + 1);
+    r.brow_micro = 0.4 * opn[i] + 0.25 * Math.sin(2 * Math.PI * t / 4 + 1);
     r.body_bob = 1.6 * Math.sin(2 * Math.PI * t / 3) + 0.4 * Math.sin(2 * Math.PI * t / 7 + 1);
     r.body_sway = 2.0 * Math.sin(2 * Math.PI * t / 9 + 0.5);
     r.radar_sweep = (t * 72) % 360;
@@ -409,15 +407,15 @@ function renderFrames(opts) {
     }
     // intensidade pela voz (prosody): fala mais forte -> reacao maior (sobrancelha/pupila)
     const emph = clamp((env[i] - 0.45) / 0.55, 0, 1);
-    r.brow_raise_L = clamp(r.brow_raise_L + 0.16 * emph, 0, 1);
-    r.brow_raise_R = clamp(r.brow_raise_R + 0.16 * emph, 0, 1);
+    r.brow_raise_L = clamp(r.brow_raise_L + 0.08 * emph, 0, 1);
+    r.brow_raise_R = clamp(r.brow_raise_R + 0.08 * emph, 0, 1);
     r.pupil_dilate = clamp(r.pupil_dilate + 0.10 * emph, 0, 1);
-    // nao fecha os olhos no sorriso (eye_smile) enquanto fala: olhos abrem quando ha voz
-    r.eye_smile = r.eye_smile * (1 - 0.7 * clamp(opn[i] * 1.4, 0, 1));
+    // nao fecha os olhos no sorriso enquanto fala (talk c/ liberacao lenta: so sorri em pausa real)
+    r.eye_smile = r.eye_smile * (1 - 0.7 * clamp(talk[i] * 1.4, 0, 1));
     frameRig[i] = r;
   }
   // passo 2: aplica molas (overshoot na cabeca/bracos; antena segue a cabeca com atraso)
-  const spP = springTrack(Tp, fps, 16, 0.45);
+  const spP = springTrack(Tp, fps, 11, 0.70);
   const spY = springTrack(Ty, fps, 12, 0.50);
   const spR = springTrack(Tr, fps, 14, 0.55);
   const spAR = springTrack(TaR, fps, 13, 0.50);
