@@ -24,7 +24,7 @@ const REST = {
   eye_open_L: 1, eye_open_R: 1, eye_smile: 0, eye_squint: 0, pupil_dilate: 0.5, gaze_x: 0, gaze_y: 0,
   brow_raise_L: 0.25, brow_raise_R: 0.25, brow_angle_L: 0, brow_angle_R: 0, brow_micro: 0,
   head_yaw: 0, head_pitch: 0, head_roll: 0,
-  body_bob: 0, body_squash: 0,
+  body_bob: 0, body_sway: 0, body_squash: 0,
   armR_raise: 0, armR_extend: 0, armL_raise: 0, armL_extend: 0, hand_open_R: 0.5, hand_open_L: 0.5,
   radar_sweep: 0, dish_tilt: 0
 };
@@ -173,7 +173,7 @@ function frameSVG(r) {
   const pitch = clamp(r.head_pitch, -1, 1) * 6;
   const inner = body(r.dish_tilt) + sweep(r.radar_sweep) + armsSvg(r);
   const faceG = '<g transform="rotate(' + f2(roll) + ' 110 112) translate(0 ' + f2(pitch) + ')">' + face(r) + '</g>';
-  const bodyG = '<g transform="translate(0 ' + f2(bob) + ') translate(110 176) scale(' + f2(sX) + ' ' + f2(sY) + ') translate(-110 -176)">' + inner + faceG + '</g>';
+  const bodyG = '<g transform="translate(' + f2(r.body_sway) + ' ' + f2(bob) + ') translate(110 176) scale(' + f2(sX) + ' ' + f2(sY) + ') translate(-110 -176)">' + inner + faceG + '</g>';
   return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + VB + '">' + defs() + bodyG + '</svg>';
 }
 
@@ -189,10 +189,12 @@ const EXPR_RIG = {
   focused: { brow_raise_L: 0.1, brow_raise_R: 0.1, brow_angle_L: -0.45, brow_angle_R: -0.45, eye_smile: 0, eye_squint: 0.45, mouth_corner: -0.05, pupil_dilate: 0.45, head_roll: -0.05, body_squash: 0 }
 };
 const GEST_RIG = {
-  idle:  { armR_raise: 0, armR_extend: 0, hand_open_R: 0.5 },
-  wave:  { armR_raise: 0.95, armR_extend: 1.0, hand_open_R: 0.9 },
-  point: { armR_raise: 0.98, armR_extend: 0.95, hand_open_R: 0.1 },
-  open:  { armR_raise: 0.6, armR_extend: 0.72, hand_open_R: 1.0 }
+  idle:      { armR_raise: 0, armR_extend: 0, hand_open_R: 0.5 },
+  wave:      { armR_raise: 0.95, armR_extend: 1.0, hand_open_R: 0.9 },
+  point:     { armR_raise: 0.98, armR_extend: 0.95, hand_open_R: 0.1 },
+  open:      { armR_raise: 0.6, armR_extend: 0.72, hand_open_R: 1.0 },
+  present:   { armR_raise: 0.5, armR_extend: 0.6, hand_open_R: 0.95 },
+  emphasize: { armR_raise: 0.78, armR_extend: 0.86, hand_open_R: 0.35 }
 };
 const EXPR_KEYS = ['brow_raise_L', 'brow_raise_R', 'brow_angle_L', 'brow_angle_R', 'eye_smile', 'eye_squint', 'mouth_corner', 'pupil_dilate', 'head_roll', 'body_squash'];
 // canais que um TRACK (viseme estagio 3 / dicionario minerado estagio 5) sobrepoe DIRETO no frame.
@@ -230,7 +232,7 @@ function buildSchedule(words, dur) {
     if (i === 0 || (w.start - prevEnd) > GAP) beats.push(w.start);
     prevEnd = (w.end != null ? w.end : w.start);
   }
-  const GSEQ = ['wave', 'point', 'open'], ESEQ = ['curious', 'focused', 'neutral', 'raised'];
+  const GSEQ = ['wave', 'point', 'open', 'present', 'emphasize'], ESEQ = ['curious', 'focused', 'neutral', 'raised'];
   const eKf = [{ t: 0, name: 'neutral' }], gKf = [{ t: 0, name: 'idle' }]; let blinks = [];
   let gi = 0, lastG = -99;
   for (let b = 0; b < beats.length; b++) {
@@ -258,14 +260,18 @@ function buildSchedule(words, dur) {
   blinks.sort((a, b) => a - b);
   const dedup = [];
   for (const tb of blinks) if (!dedup.length || tb - dedup[dedup.length - 1] > 0.45) dedup.push(tb);
-  return { eKf: eKf, gKf: gKf, blinks: dedup, nods: nods };
+  // piscadas duplas ocasionais (vida): a cada ~3a piscada, uma segunda rapida 0.17s depois
+  const withDoubles = dedup.slice();
+  for (let k = 0; k < dedup.length; k++) if (k % 3 === 2 && dedup[k] + 0.17 < dur) withDoubles.push(dedup[k] + 0.17);
+  withDoubles.sort((a, b) => a - b);
+  return { eKf: eKf, gKf: gKf, blinks: withDoubles, nods: nods };
 }
 function buildScheduleFallback(dur) {
   const eKf = [{ t: 0, name: 'neutral' }], gKf = [{ t: 0, name: 'idle' }]; let blinks = [];
   for (let tb = 1.4; tb < dur; tb += 3.0) blinks.push(tb);
   const ESEQ = ['neutral', 'curious', 'focused', 'raised']; let ei = 0;
   for (let k = 0; k < blinks.length; k++) if (k % 2 === 1) { eKf.push({ t: blinks[k], name: ESEQ[ei % ESEQ.length] }); ei++; }
-  const GSEQ = ['wave', 'point', 'open']; let tt = 2.5, gi = 0;
+  const GSEQ = ['wave', 'point', 'open', 'present', 'emphasize']; let tt = 2.5, gi = 0;
   while (tt < dur) {
     gKf.push({ t: tt, name: 'idle' });
     gKf.push({ t: tt + 0.55, name: GSEQ[gi % GSEQ.length] });
@@ -275,7 +281,10 @@ function buildScheduleFallback(dur) {
   }
   gKf.push({ t: dur + 1, name: 'idle' });
   blinks.sort((a, b) => a - b);
-  return { eKf: eKf, gKf: gKf, blinks: blinks, nods: [] };
+  const withD = blinks.slice();
+  for (let k = 0; k < blinks.length; k++) if (k % 3 === 2 && blinks[k] + 0.17 < dur) withD.push(blinks[k] + 0.17);
+  withD.sort((a, b) => a - b);
+  return { eKf: eKf, gKf: gKf, blinks: withD, nods: [] };
 }
 
 // virada de cabeca ocasional (alvo p/ a mola)
@@ -377,10 +386,11 @@ function renderFrames(opts) {
     r.eye_open_L = eo; r.eye_open_R = eo;
     r.gaze_x = gz.x; r.gaze_y = gz.y;
     r.brow_micro = 1.2 * opn[i] + 0.5 * Math.sin(2 * Math.PI * t / 4 + 1);
-    r.body_bob = 1.6 * Math.sin(2 * Math.PI * t / 3);
+    r.body_bob = 1.6 * Math.sin(2 * Math.PI * t / 3) + 0.4 * Math.sin(2 * Math.PI * t / 7 + 1);
+    r.body_sway = 2.0 * Math.sin(2 * Math.PI * t / 9 + 0.5);
     r.radar_sweep = (t * 72) % 360;
     r.hand_open_R = ge.hand_open_R;
-    Tp[i] = nodTarget(t, nods); Ty[i] = headYaw(t); Tr[i] = ex.head_roll;
+    Tp[i] = nodTarget(t, nods); Ty[i] = headYaw(t) + 0.06 * Math.sin(2 * Math.PI * t / 8); Tr[i] = ex.head_roll + 0.05 * Math.sin(2 * Math.PI * t / 6.5 + 2);
     TaR[i] = ge.armR_raise; TeR[i] = ge.armR_extend;
     // sobreposicao por TRACK (se houver): boca por viseme + canais minerados
     if (visTrack && visTrack[i]) { r.mouth_open = visTrack[i].mouth_open; r.mouth_round = visTrack[i].mouth_round; r.mouth_width = visTrack[i].mouth_width; }
