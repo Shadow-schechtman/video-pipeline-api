@@ -455,6 +455,22 @@ function renderFrames(opts) {
   for (let i = 0; i < nf; i++) {
     const t = i / fps;
     const ex = exprTargetAt(t, eKf), ge = gestTargetAt(t, gKf), gz = gazeAt(t, eKf), eo = eyeAt(t);
+    // item 2: amplitude do gesto pela PROSODIA (fala forte -> gesto maior; calma -> contido).
+    // so modula gesto ativo (no repouso raise=0, multiplicar nao muda nada).
+    const emph = clamp((env[i] - 0.45) / 0.55, 0, 1);
+    const gAmp = lerp(0.85, 1.12, emph);
+    ge.armR_raise = clamp(ge.armR_raise * gAmp, 0, 1); ge.armR_extend = clamp(ge.armR_extend * gAmp, 0, 1);
+    ge.armL_raise = clamp(ge.armL_raise * gAmp, 0, 1); ge.armL_extend = clamp(ge.armL_extend * gAmp, 0, 1);
+    // item 1: olhar/cabeca acompanham o gesto. Punho ALVO de cada braco (mesma geometria de armsSvg).
+    // Olha pro punho do braco mais engajado (peso = quanto cada braco esta levantado); os olhos lideram.
+    const wshR = rad(lerp(84, -24, clamp(ge.armR_raise, 0, 1))), welR = rad(lerp(96, -28, clamp(ge.armR_extend, 0, 1)));
+    const wxR = 166 + 24 * Math.cos(wshR) + 22 * Math.cos(welR), wyR = 150 + 24 * Math.sin(wshR) + 22 * Math.sin(welR);
+    const wshL = rad(lerp(96, -20, clamp(ge.armL_raise, 0, 1))), welL = rad(lerp(84, -5, clamp(ge.armL_extend, 0, 1)));
+    const wxL = 54 + 24 * Math.cos(wshL) + 22 * Math.cos(welL), wyL = 150 + 24 * Math.sin(wshL) + 22 * Math.sin(welL);
+    const engR = clamp(ge.armR_raise, 0, 1), engL = clamp(ge.armL_raise, 0, 1), engG = clamp(engR + engL, 0, 1);
+    const wsum = engR + engL + 1e-6;
+    const lookX = clamp(((engR * wxR + engL * wxL) / wsum - 110) / 160, -1, 1);
+    const lookY = clamp(((engR * wyR + engL * wyL) / wsum - 112) / 120, -1, 1);
     const r = rigRest();
     r.brow_raise_L = ex.brow_raise_L; r.brow_raise_R = ex.brow_raise_R;
     r.brow_angle_L = ex.brow_angle_L; r.brow_angle_R = ex.brow_angle_R;
@@ -462,14 +478,14 @@ function renderFrames(opts) {
     r.mouth_corner = ex.mouth_corner; r.pupil_dilate = ex.pupil_dilate; r.body_squash = ex.body_squash;
     r.mouth_open = opn[i]; r.mouth_round = rndArr[i];
     r.eye_open_L = eo; r.eye_open_R = eo;
-    r.gaze_x = gz.x; r.gaze_y = gz.y;
+    r.gaze_x = lerp(gz.x, lookX, engG * 0.8); r.gaze_y = lerp(gz.y, lookY, engG * 0.7);
     r.brow_micro = 0.4 * opn[i] + 0.25 * Math.sin(2 * Math.PI * t / 4 + 1);
     r.body_bob = 1.6 * Math.sin(2 * Math.PI * t / 3) + 0.4 * Math.sin(2 * Math.PI * t / 7 + 1);
     r.body_sway = 2.0 * Math.sin(2 * Math.PI * t / 9 + 0.5);
     r.radar_sweep = (t * 72) % 360;
     r.hand_open_R = ge.hand_open_R; r.hand_open_L = ge.hand_open_L;
     r.hand_rot_R = ge.hand_rot_R; r.hand_rot_L = ge.hand_rot_L;
-    Tp[i] = nodTarget(t, nods); Ty[i] = headYaw(t) + 0.06 * Math.sin(2 * Math.PI * t / 8); Tr[i] = ex.head_roll + 0.05 * Math.sin(2 * Math.PI * t / 6.5 + 2);
+    Tp[i] = nodTarget(t, nods); Ty[i] = lerp(headYaw(t) + 0.06 * Math.sin(2 * Math.PI * t / 8), lookX, engG * 0.55); Tr[i] = ex.head_roll + 0.05 * Math.sin(2 * Math.PI * t / 6.5 + 2);
     TaR[i] = ge.armR_raise; TeR[i] = ge.armR_extend; TaL[i] = ge.armL_raise; TeL[i] = ge.armL_extend;
     // viseme da a FORMA da boca; a amplitude garante uma abertura minima (nunca fica chapada quando ha voz)
     if (visTrack && visTrack[i]) { r.mouth_open = Math.max(visTrack[i].mouth_open, opn[i]); r.mouth_round = visTrack[i].mouth_round; r.mouth_width = visTrack[i].mouth_width; }
@@ -483,7 +499,6 @@ function renderFrames(opts) {
       if (k.armR_extend != null) TeR[i] = k.armR_extend;
     }
     // intensidade pela voz (prosody): fala mais forte -> reacao maior (sobrancelha/pupila)
-    const emph = clamp((env[i] - 0.45) / 0.55, 0, 1);
     r.brow_raise_L = clamp(r.brow_raise_L + 0.08 * emph, 0, 1);
     r.brow_raise_R = clamp(r.brow_raise_R + 0.08 * emph, 0, 1);
     r.pupil_dilate = clamp(r.pupil_dilate + 0.10 * emph, 0, 1);
