@@ -93,7 +93,7 @@ const AVATAR = true;
 const AVATAR_W = 780;             // largura do mascote (~35% da altura: PNG 672 = 35% de 1920)
 const AVATAR_X = -130;            // negativo: cola o mascote no canto inferior-esquerdo (o padding lateral do viewBox sai da tela)
 const AVATAR_MARGIN_BOTTOM = 60;  // margem inferior (px)
-const AVATAR_FPS = 25;            // fps do avatar (baixar p/ 20 acelera o render)
+const AVATAR_FPS = 30;            // fps do avatar (30 = alinhado aos clipes 30fps; movimento mais liso. Baixar p/ 25 acelera o render)
 const AVATAR_CHANNELS = { '#00C2FF': true };
 
 function avatarOn(corLegenda) {
