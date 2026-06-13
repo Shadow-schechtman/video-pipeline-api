@@ -62,13 +62,14 @@ function armChain(sx, sy, shAng, elAng, handOpen) {
 }
 const R_SH = [166, 150], L_SH = [54, 150];
 
-// raise/extend normalizados (0..1) -> angulos (idle -> elevado), faixas das poses originais.
-// Mascote no canto esq.: so o braco direito gesticula (no plano visivel); o esquerdo fica em repouso.
+// raise/extend normalizados (0..1) -> angulos. Direito: idle -> elevado a direita.
+// Esquerdo REMAPEADO: como a borda corta a esquerda, o esquerdo aponta pra DIREITA/CENTRO
+// (repouso embaixo -> sobe na diagonal pra dentro do quadro), ficando no plano e sem tapar o rosto.
 function armsSvg(r) {
   const shR = lerp(84, -24, clamp(r.armR_raise, 0, 1));
   const elR = lerp(96, -28, clamp(r.armR_extend, 0, 1));
-  const shL = lerp(96, 250, clamp(r.armL_raise, 0, 1));
-  const elL = lerp(84, 258, clamp(r.armL_extend, 0, 1));
+  const shL = lerp(96, -20, clamp(r.armL_raise, 0, 1));
+  const elL = lerp(84, -5, clamp(r.armL_extend, 0, 1));
   return armChain(R_SH[0], R_SH[1], shR, elR, r.hand_open_R)
     + armChain(L_SH[0], L_SH[1], shL, elL, r.hand_open_L);
 }
@@ -191,11 +192,12 @@ const EXPR_RIG = {
   curious: { brow_raise_L: 0.35, brow_raise_R: 0.65, brow_angle_L: 0.1, brow_angle_R: 0.35, eye_smile: 0, eye_squint: 0.1, mouth_corner: 0.1, pupil_dilate: 0.55, head_roll: 0.2, body_squash: 0 },
   focused: { brow_raise_L: 0.1, brow_raise_R: 0.1, brow_angle_L: -0.45, brow_angle_R: -0.45, eye_smile: 0, eye_squint: 0.45, mouth_corner: -0.05, pupil_dilate: 0.45, head_roll: -0.05, body_squash: 0 }
 };
-// Mascote no canto inferior-esquerdo: a borda esquerda do video corta tudo com vx<23.3,
-// entao SO o braco direito gesticula no plano visivel. O esquerdo sobe pra fora do quadro,
-// por isso fica em REPOUSO (so as 8 poses de braco direito abaixo sao usadas).
+// Mascote no canto inferior-esquerdo: a borda esquerda corta vx<23.3. O braco DIREITO gesticula
+// a direita; o ESQUERDO foi remapeado pra apontar a direita/centro (ver armsSvg), entao tambem
+// gesticula no plano (baixo-centro, sem tapar o rosto). Da pra usar os dois na mesma direcao.
 const GEST_RIG = {
   idle:      { armR_raise: 0, armR_extend: 0, hand_open_R: 0.5, armL_raise: 0, armL_extend: 0, hand_open_L: 0.5 },
+  // --- braco direito ---
   wave:      { armR_raise: 0.95, armR_extend: 1.0, hand_open_R: 0.9 },   // saudacao (mao alta, aberta)
   point:     { armR_raise: 0.98, armR_extend: 0.95, hand_open_R: 0.1 },  // apontar (alto, fechado)
   open:      { armR_raise: 0.6, armR_extend: 0.72, hand_open_R: 1.0 },   // palma aberta (medio)
@@ -203,7 +205,12 @@ const GEST_RIG = {
   emphasize: { armR_raise: 0.78, armR_extend: 0.86, hand_open_R: 0.35 }, // enfase (medio-alto, semi)
   chop:      { armR_raise: 0.55, armR_extend: 0.95, hand_open_R: 0.25 }, // corte assertivo (medio, semi)
   offer:     { armR_raise: 0.32, armR_extend: 0.38, hand_open_R: 1.0 },  // oferecer (baixo, aberto)
-  beat_low:  { armR_raise: 0.25, armR_extend: 0.5, hand_open_R: 0.2 }    // batida baixa (baixo, fechado)
+  beat_low:  { armR_raise: 0.25, armR_extend: 0.5, hand_open_R: 0.2 },   // batida baixa (baixo, fechado)
+  // --- braco esquerdo (aponta pra direita/centro, baixo) ---
+  l_present: { armL_raise: 0.45, armL_extend: 0.55, hand_open_L: 0.95 }, // mao esquerda apresenta (baixo-centro)
+  // --- dois bracos na MESMA direcao (direita) ---
+  both_open:    { armR_raise: 0.6, armR_extend: 0.72, hand_open_R: 1.0, armL_raise: 0.5, armL_extend: 0.55, hand_open_L: 1.0 },  // dois abertos p/ direita
+  both_present: { armR_raise: 0.5, armR_extend: 0.6, hand_open_R: 0.95, armL_raise: 0.4, armL_extend: 0.5, hand_open_L: 0.95 }   // dois apresentando p/ direita
 };
 
 // ===== HEURISTICA DE GESTO POR CONTEXTO =====
@@ -229,14 +236,14 @@ function beatCue(beatIndex, t, words, dur) {
   if (/ (mas|porem|contudo|entretanto|espera|but|however|cuidado|atencao) /.test(win)) return 'suspense';
   return 'default';
 }
-// Familia por cue (so gestos de braco direito, todos confirmados no plano visivel):
+// Familia por cue. Direito (alto/preciso) + esquerdo e dois-bracos (baixo-centro, p/ direita):
 const GFAM = {
-  hook:     ['open', 'present', 'emphasize'],   // convidativo / energico
-  stat:     ['point', 'chop', 'emphasize'],     // assertivo / pontuado (dado, numero)
-  reveal:   ['present', 'open', 'offer'],        // apresentar / revelar
-  suspense: ['beat_low', 'offer', 'chop'],       // contido / tensao
-  payoff:   ['emphasize', 'open', 'wave'],       // comemorativo / fechamento (CTA)
-  default:  ['present', 'open', 'emphasize', 'point', 'chop']
+  hook:     ['open', 'present', 'both_open'],     // convidativo / energico (dois bracos abre bem)
+  stat:     ['point', 'chop', 'emphasize'],       // assertivo / pontuado (dado, numero) - braco direito
+  reveal:   ['both_present', 'present', 'open'],   // apresentar / revelar (dois bracos apresenta)
+  suspense: ['beat_low', 'offer', 'chop'],         // contido / tensao
+  payoff:   ['both_open', 'emphasize', 'wave'],    // comemorativo / fechamento (CTA)
+  default:  ['present', 'open', 'emphasize', 'l_present', 'both_open']
 };
 // escolha DETERMINISTICA dentro da familia (passo 2, coprimo aos tamanhos 3 e 5 -> cobre todos
 // sem repetir o anterior). Render continua reproduzivel.
