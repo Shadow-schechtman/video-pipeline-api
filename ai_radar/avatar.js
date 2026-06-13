@@ -394,8 +394,8 @@ function renderFrames(opts) {
     r.hand_open_R = ge.hand_open_R;
     Tp[i] = nodTarget(t, nods); Ty[i] = headYaw(t) + 0.06 * Math.sin(2 * Math.PI * t / 8); Tr[i] = ex.head_roll + 0.05 * Math.sin(2 * Math.PI * t / 6.5 + 2);
     TaR[i] = ge.armR_raise; TeR[i] = ge.armR_extend;
-    // sobreposicao por TRACK (se houver): boca por viseme + canais minerados
-    if (visTrack && visTrack[i]) { r.mouth_open = visTrack[i].mouth_open; r.mouth_round = visTrack[i].mouth_round; r.mouth_width = visTrack[i].mouth_width; }
+    // viseme da a FORMA da boca; a amplitude garante uma abertura minima (nunca "chapada" quando ha voz)
+    if (visTrack && visTrack[i]) { r.mouth_open = Math.max(visTrack[i].mouth_open, opn[i]); r.mouth_round = visTrack[i].mouth_round; r.mouth_width = visTrack[i].mouth_width; }
     if (rigTrack && rigTrack[i]) {
       const k = rigTrack[i];
       for (let d = 0; d < DIRECT_TR.length; d++) { const ch = DIRECT_TR[d]; if (k[ch] != null) r[ch] = k[ch]; }
