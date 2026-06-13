@@ -183,7 +183,12 @@ function frameSVG(r) {
   const inner = body(r.dish_tilt) + sweep(r.radar_sweep) + armsSvg(r);
   const faceG = '<g transform="rotate(' + f2(roll) + ' 110 112) translate(0 ' + f2(pitch) + ')">' + face(r) + '</g>';
   const bodyG = '<g transform="translate(' + f2(r.body_sway) + ' ' + f2(bob) + ') translate(110 176) scale(' + f2(sX) + ' ' + f2(sY) + ') translate(-110 -176)">' + inner + faceG + '</g>';
-  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + VB + '">' + defs() + bodyG + '</svg>';
+  // entrada/saida "acorda no lugar": escala a partir da base (~110,188) + fade. Inerte no meio (isc=iop=1).
+  const isc = (r.intro_scale == null ? 1 : r.intro_scale), iop = (r.intro_op == null ? 1 : r.intro_op);
+  const scene = (isc < 0.999 || iop < 0.999)
+    ? '<g opacity="' + f2(clamp(iop, 0, 1)) + '" transform="translate(110 188) scale(' + f2(isc) + ') translate(-110 -188)">' + bodyG + '</g>'
+    : bodyG;
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + VB + '">' + defs() + scene + '</svg>';
 }
 
 // ============================================================
@@ -515,6 +520,11 @@ function renderFrames(opts) {
     r.eye_smile = r.eye_smile * (1 - 0.7 * clamp(talk[i] * 1.4, 0, 1));
     // nao trava a boca num sorriso enquanto fala: o canto da boca relaxa com a voz (libera a articulacao)
     r.mouth_corner = r.mouth_corner * (1 - 0.6 * clamp(talk[i] * 1.4, 0, 1));
+    // item 4b: entrada/saida do mascote ("acorda no lugar"). Rampas so nas pontas; inerte no meio.
+    const ti = ease(clamp(t / 0.45, 0, 1)), to = ease(clamp((dur - t) / 0.45, 0, 1));
+    r.intro_scale = lerp(0.55, 1.0, ti) * lerp(0.72, 1.0, to); // cresce ao entrar, encolhe um pouco ao sair
+    r.intro_op = clamp(t / 0.18, 0, 1) * clamp((dur - t) / 0.30, 0, 1); // fade-in rapido + fade-out no fim
+    const eyeBoot = clamp(t / 0.35, 0, 1); r.eye_open_L *= eyeBoot; r.eye_open_R *= eyeBoot; // olhos acordam
     frameRig[i] = r;
   }
   // passo 2: aplica molas (overshoot na cabeca/bracos; antena segue a cabeca com atraso)
