@@ -28,6 +28,7 @@ const REST = {
   head_yaw: 0, head_pitch: 0, head_roll: 0,
   body_bob: 0, body_sway: 0, body_squash: 0,
   armR_raise: 0, armR_extend: 0, armL_raise: 0, armL_extend: 0, hand_open_R: 0.5, hand_open_L: 0.5,
+  hand_rot_R: 0, hand_rot_L: 0,
   radar_sweep: 0, dish_tilt: 0
 };
 function rigRest() { return Object.assign({}, REST); }
@@ -45,22 +46,24 @@ function fingers(wx, wy, base, spread, count, length) {
   }
   return s;
 }
-function hand(wx, wy, base, length, spread, mirror) {
+function hand(wx, wy, base, length, spread, mirror, rot) {
   length = length || 20; spread = spread || 46;
+  // rotacao do PUNHO (disposicao da mao independente do antebraco); espelhada na esquerda
+  const b = base + (mirror ? -(rot || 0) : (rot || 0));
   // polegar do lado oposto na mao ESPELHADA (esquerda); senao parecem duas maos direitas
-  const thumb = base + (mirror ? 60 : -60);
-  return fingers(wx, wy, base, spread, 4, length) + fingers(wx, wy, thumb, 0, 1, length * 0.7);
+  const thumb = b + (mirror ? 60 : -60);
+  return fingers(wx, wy, b, spread, 4, length) + fingers(wx, wy, thumb, 0, 1, length * 0.7);
 }
 
 // ---------- braco parametrico ----------
 const UP_LEN = 24, FORE_LEN = 22;
-function armChain(sx, sy, shAng, elAng, handOpen, mirror) {
+function armChain(sx, sy, shAng, elAng, handOpen, mirror, rot) {
   const sa = rad(shAng), ea = rad(elAng);
   const ex = sx + UP_LEN * Math.cos(sa), ey = sy + UP_LEN * Math.sin(sa);
   const wx = ex + FORE_LEN * Math.cos(ea), wy = ey + FORE_LEN * Math.sin(ea);
   const arm = '<path d="M' + f1(sx) + ',' + f1(sy) + ' Q' + f1(ex) + ',' + f1(ey) + ' ' + f1(wx) + ',' + f1(wy) + '" fill="none" stroke="' + C + '" stroke-width="3.2" stroke-linecap="round"/>';
   const spread = lerp(10, 58, clamp(handOpen, 0, 1));
-  return arm + hand(wx, wy, elAng, 20, spread, mirror);
+  return arm + hand(wx, wy, elAng, 20, spread, mirror, rot);
 }
 const R_SH = [166, 150], L_SH = [54, 150];
 
@@ -72,8 +75,8 @@ function armsSvg(r) {
   const elR = lerp(96, -28, clamp(r.armR_extend, 0, 1));
   const shL = lerp(96, -20, clamp(r.armL_raise, 0, 1));
   const elL = lerp(84, -5, clamp(r.armL_extend, 0, 1));
-  return armChain(R_SH[0], R_SH[1], shR, elR, r.hand_open_R, false)
-    + armChain(L_SH[0], L_SH[1], shL, elL, r.hand_open_L, true);
+  return armChain(R_SH[0], R_SH[1], shR, elR, r.hand_open_R, false, r.hand_rot_R)
+    + armChain(L_SH[0], L_SH[1], shL, elL, r.hand_open_L, true, r.hand_rot_L);
 }
 
 // ---------- defs (gradientes 3D) ----------
@@ -208,6 +211,10 @@ const GEST_RIG = {
   chop:      { armR_raise: 0.55, armR_extend: 0.95, hand_open_R: 0.25 }, // corte assertivo (medio, semi)
   offer:     { armR_raise: 0.32, armR_extend: 0.38, hand_open_R: 1.0 },  // oferecer (baixo, aberto)
   beat_low:  { armR_raise: 0.25, armR_extend: 0.5, hand_open_R: 0.2 },   // batida baixa (baixo, fechado)
+  // --- braco direito, DISPOSICAO de mao variada (rotacao do punho) ---
+  offer_up:   { armR_raise: 0.32, armR_extend: 0.38, hand_open_R: 0.9, hand_rot_R: -95 }, // palma p/ cima (oferta), dedos p/ cima
+  side:       { armR_raise: 0.4, armR_extend: 0.5, hand_open_R: 0.25, hand_rot_R: -45 },  // mao de lado (casual)
+  point_down: { armR_raise: 0.3, armR_extend: 0.45, hand_open_R: 0.15, hand_rot_R: 40 },  // dedos p/ baixo (indicar)
   // --- braco esquerdo (aponta pra direita/centro, baixo) ---
   l_present: { armL_raise: 0.45, armL_extend: 0.55, hand_open_L: 0.95 }, // mao esquerda apresenta (baixo-centro)
   // --- dois bracos na MESMA direcao (direita) ---
@@ -240,12 +247,12 @@ function beatCue(beatIndex, t, words, dur) {
 }
 // Familia por cue. Direito (alto/preciso) + esquerdo e dois-bracos (baixo-centro, p/ direita):
 const GFAM = {
-  hook:     ['open', 'present', 'both_open'],     // convidativo / energico (dois bracos abre bem)
-  stat:     ['point', 'chop', 'emphasize'],       // assertivo / pontuado (dado, numero) - braco direito
-  reveal:   ['both_present', 'present', 'open'],   // apresentar / revelar (dois bracos apresenta)
-  suspense: ['beat_low', 'offer', 'chop'],         // contido / tensao
-  payoff:   ['both_open', 'emphasize', 'wave'],    // comemorativo / fechamento (CTA)
-  default:  ['present', 'open', 'emphasize', 'l_present', 'both_open']
+  hook:     ['open', 'offer_up', 'both_open'],      // convidativo / energico (palma p/ cima convida)
+  stat:     ['point', 'chop', 'point_down'],         // assertivo / pontuado (point_down indica numero)
+  reveal:   ['both_present', 'present', 'offer_up'],  // apresentar / revelar (palma aberta)
+  suspense: ['beat_low', 'side', 'offer'],            // contido / tensao (mao de lado, casual)
+  payoff:   ['both_open', 'emphasize', 'wave'],       // comemorativo / fechamento (CTA)
+  default:  ['open', 'side', 'offer_up', 'l_present', 'both_open']
 };
 // escolha DETERMINISTICA dentro da familia (passo 2, coprimo aos tamanhos 3 e 5 -> cobre todos
 // sem repetir o anterior). Render continua reproduzivel.
@@ -282,9 +289,11 @@ function gestTargetAt(t, gKf) {
     armR_raise: lerp(gv(prev, 'armR_raise', 0), gv(cur, 'armR_raise', 0), pa),
     armR_extend: lerp(gv(prev, 'armR_extend', 0), gv(cur, 'armR_extend', 0), pa),
     hand_open_R: lerp(gv(prev, 'hand_open_R', 0.5), gv(cur, 'hand_open_R', 0.5), pe),
+    hand_rot_R: lerp(gv(prev, 'hand_rot_R', 0), gv(cur, 'hand_rot_R', 0), pe),
     armL_raise: lerp(gv(prev, 'armL_raise', 0), gv(cur, 'armL_raise', 0), pa),
     armL_extend: lerp(gv(prev, 'armL_extend', 0), gv(cur, 'armL_extend', 0), pa),
-    hand_open_L: lerp(gv(prev, 'hand_open_L', 0.5), gv(cur, 'hand_open_L', 0.5), pe)
+    hand_open_L: lerp(gv(prev, 'hand_open_L', 0.5), gv(cur, 'hand_open_L', 0.5), pe),
+    hand_rot_L: lerp(gv(prev, 'hand_rot_L', 0), gv(cur, 'hand_rot_L', 0), pe)
   };
 }
 
@@ -456,6 +465,7 @@ function renderFrames(opts) {
     r.body_sway = 2.0 * Math.sin(2 * Math.PI * t / 9 + 0.5);
     r.radar_sweep = (t * 72) % 360;
     r.hand_open_R = ge.hand_open_R; r.hand_open_L = ge.hand_open_L;
+    r.hand_rot_R = ge.hand_rot_R; r.hand_rot_L = ge.hand_rot_L;
     Tp[i] = nodTarget(t, nods); Ty[i] = headYaw(t) + 0.06 * Math.sin(2 * Math.PI * t / 8); Tr[i] = ex.head_roll + 0.05 * Math.sin(2 * Math.PI * t / 6.5 + 2);
     TaR[i] = ge.armR_raise; TeR[i] = ge.armR_extend; TaL[i] = ge.armL_raise; TeL[i] = ge.armL_extend;
     // viseme da a FORMA da boca; a amplitude garante uma abertura minima (nunca fica chapada quando ha voz)
