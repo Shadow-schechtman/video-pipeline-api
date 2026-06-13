@@ -63,7 +63,7 @@ function armChain(sx, sy, shAng, elAng, handOpen) {
 const R_SH = [166, 150], L_SH = [54, 150];
 
 // raise/extend normalizados (0..1) -> angulos (idle -> elevado), faixas das poses originais.
-// Mascote no canto esq.: braco direito gesticula pra direita; esquerdo agora tambem gesticula pra esquerda.
+// Mascote no canto esq.: so o braco direito gesticula (no plano visivel); o esquerdo fica em repouso.
 function armsSvg(r) {
   const shR = lerp(84, -24, clamp(r.armR_raise, 0, 1));
   const elR = lerp(96, -28, clamp(r.armR_extend, 0, 1));
@@ -191,32 +191,58 @@ const EXPR_RIG = {
   curious: { brow_raise_L: 0.35, brow_raise_R: 0.65, brow_angle_L: 0.1, brow_angle_R: 0.35, eye_smile: 0, eye_squint: 0.1, mouth_corner: 0.1, pupil_dilate: 0.55, head_roll: 0.2, body_squash: 0 },
   focused: { brow_raise_L: 0.1, brow_raise_R: 0.1, brow_angle_L: -0.45, brow_angle_R: -0.45, eye_smile: 0, eye_squint: 0.45, mouth_corner: -0.05, pupil_dilate: 0.45, head_roll: -0.05, body_squash: 0 }
 };
+// Mascote no canto inferior-esquerdo: a borda esquerda do video corta tudo com vx<23.3,
+// entao SO o braco direito gesticula no plano visivel. O esquerdo sobe pra fora do quadro,
+// por isso fica em REPOUSO (so as 8 poses de braco direito abaixo sao usadas).
 const GEST_RIG = {
-  idle:        { armR_raise: 0, armR_extend: 0, hand_open_R: 0.5, armL_raise: 0, armL_extend: 0, hand_open_L: 0.5 },
-  // --- braco direito ---
-  wave:        { armR_raise: 0.95, armR_extend: 1.0, hand_open_R: 0.9 },
-  point:       { armR_raise: 0.98, armR_extend: 0.95, hand_open_R: 0.1 },
-  open:        { armR_raise: 0.6, armR_extend: 0.72, hand_open_R: 1.0 },
-  present:     { armR_raise: 0.5, armR_extend: 0.6, hand_open_R: 0.95 },
-  emphasize:   { armR_raise: 0.78, armR_extend: 0.86, hand_open_R: 0.35 },
-  chop:        { armR_raise: 0.55, armR_extend: 0.95, hand_open_R: 0.25 },
-  offer:       { armR_raise: 0.32, armR_extend: 0.38, hand_open_R: 1.0 },
-  // --- braco esquerdo (espelha o direito do outro lado) ---
-  l_present:   { armL_raise: 0.5, armL_extend: 0.6, hand_open_L: 0.95 },
-  l_open:      { armL_raise: 0.6, armL_extend: 0.72, hand_open_L: 1.0 },
-  l_point:     { armL_raise: 0.85, armL_extend: 0.7, hand_open_L: 0.1 },
-  // --- dois bracos (simetrico) ---
-  both_up:     { armR_raise: 1.0, armR_extend: 0.6, hand_open_R: 0.6, armL_raise: 0.95, armL_extend: 0.6, hand_open_L: 0.6 },
-  both_open:   { armR_raise: 0.6, armR_extend: 0.72, hand_open_R: 1.0, armL_raise: 0.6, armL_extend: 0.72, hand_open_L: 1.0 },
-  welcome:     { armR_raise: 0.7, armR_extend: 0.9, hand_open_R: 0.9, armL_raise: 0.7, armL_extend: 0.9, hand_open_L: 0.9 }
+  idle:      { armR_raise: 0, armR_extend: 0, hand_open_R: 0.5, armL_raise: 0, armL_extend: 0, hand_open_L: 0.5 },
+  wave:      { armR_raise: 0.95, armR_extend: 1.0, hand_open_R: 0.9 },   // saudacao (mao alta, aberta)
+  point:     { armR_raise: 0.98, armR_extend: 0.95, hand_open_R: 0.1 },  // apontar (alto, fechado)
+  open:      { armR_raise: 0.6, armR_extend: 0.72, hand_open_R: 1.0 },   // palma aberta (medio)
+  present:   { armR_raise: 0.5, armR_extend: 0.6, hand_open_R: 0.95 },   // apresentar (baixo-medio, aberto)
+  emphasize: { armR_raise: 0.78, armR_extend: 0.86, hand_open_R: 0.35 }, // enfase (medio-alto, semi)
+  chop:      { armR_raise: 0.55, armR_extend: 0.95, hand_open_R: 0.25 }, // corte assertivo (medio, semi)
+  offer:     { armR_raise: 0.32, armR_extend: 0.38, hand_open_R: 1.0 },  // oferecer (baixo, aberto)
+  beat_low:  { armR_raise: 0.25, armR_extend: 0.5, hand_open_R: 0.2 }    // batida baixa (baixo, fechado)
 };
-// pool de gestos sorteados no meio do video (wave fica reservado p/ a saudacao inicial)
-const GPOOL = ['point', 'open', 'present', 'emphasize', 'chop', 'offer', 'l_present', 'l_open', 'l_point', 'both_up', 'both_open', 'welcome'];
-// escolha DETERMINISTICA (render reproduzivel) com passo coprimo ao tamanho do pool:
-// percorre TODOS os gestos em ordem embaralhada, sem repetir o anterior.
-function pickGesture(idx, prev) {
-  let g = GPOOL[(idx * 5) % GPOOL.length];
-  if (g === prev) g = GPOOL[(idx * 5 + 1) % GPOOL.length];
+
+// ===== HEURISTICA DE GESTO POR CONTEXTO =====
+// Racional: cada beat (inicio de fala apos pausa) e classificado pelo que esta sendo dito nas
+// palavras ao redor -> um "cue". Cada cue puxa de uma FAMILIA de gestos com a energia adequada,
+// e dentro da familia a escolha varia sem repetir a anterior. Assim o gesto COMBINA com o
+// momento (abertura, dado, revelacao, virada, fechamento) em vez de ser sorteado solto.
+// Sinais (em ordem de prioridade): 1o beat = hook; reta final (>82% do video) ou CTA = payoff;
+// numero/% = stat; palavras-gatilho de hook/revelacao/suspense; senao = default (variado).
+function normTxt(s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9% ]/g, ' ');
+}
+function beatCue(beatIndex, t, words, dur) {
+  if (beatIndex === 0) return 'hook';
+  let win = '';
+  for (const w of words) { if (w.start != null && w.start >= t - 0.06 && w.start <= t + 0.9) win += ' ' + normTxt(w.word); }
+  win = ' ' + win.trim() + ' ';
+  if (t > dur * 0.82) return 'payoff';
+  if (/ (segue|segui|siga|inscreva|inscrever|compartilh|compartilha|curta|comenta|comente|follow|share|subscribe) /.test(win)) return 'payoff';
+  if (/[0-9]/.test(win) || /%/.test(win) || / (milhao|milhoes|bilhao|bilhoes|mil|porcento|percent|million|billion|numero|numeros|dado|dados|vezes) /.test(win)) return 'stat';
+  if (/ (imagina|imagine|sabia|olha|olhe|presta|did|what) /.test(win)) return 'hook';
+  if (/ (verdade|segredo|segredos|revela|revelar|descobr|acontece|actually|secret|surpres|surpresa) /.test(win)) return 'reveal';
+  if (/ (mas|porem|contudo|entretanto|espera|but|however|cuidado|atencao) /.test(win)) return 'suspense';
+  return 'default';
+}
+// Familia por cue (so gestos de braco direito, todos confirmados no plano visivel):
+const GFAM = {
+  hook:     ['open', 'present', 'emphasize'],   // convidativo / energico
+  stat:     ['point', 'chop', 'emphasize'],     // assertivo / pontuado (dado, numero)
+  reveal:   ['present', 'open', 'offer'],        // apresentar / revelar
+  suspense: ['beat_low', 'offer', 'chop'],       // contido / tensao
+  payoff:   ['emphasize', 'open', 'wave'],       // comemorativo / fechamento (CTA)
+  default:  ['present', 'open', 'emphasize', 'point', 'chop']
+};
+// escolha DETERMINISTICA dentro da familia (passo 2, coprimo aos tamanhos 3 e 5 -> cobre todos
+// sem repetir o anterior). Render continua reproduzivel.
+function pickFromFamily(fam, idx, prev) {
+  let g = fam[(idx * 2) % fam.length];
+  if (g === prev) g = fam[(idx * 2 + 1) % fam.length];
   return g;
 }
 const EXPR_KEYS = ['brow_raise_L', 'brow_raise_R', 'brow_angle_L', 'brow_angle_R', 'eye_smile', 'eye_squint', 'mouth_corner', 'pupil_dilate', 'head_roll', 'body_squash'];
@@ -270,7 +296,8 @@ function buildSchedule(words, dur) {
     eKf.push({ t: t, name: name }); blinks.push(t);
     const minGap = 2.1 + (gi % 2) * 0.6; // espacamento entre gestos varia (nao metronomico)
     if (t - lastG > minGap) {
-      const g = (b === 0) ? 'wave' : pickGesture(gi, prevG); prevG = g;
+      const cue = beatCue(b, t, words, dur);
+      const g = (b === 0) ? 'wave' : pickFromFamily(GFAM[cue] || GFAM.default, gi, prevG); prevG = g;
       const inT = t + 0.45, hold = 1.0 + (gi % 3) * 0.28, outT = inT + hold; // duracao do gesto varia
       gKf.push({ t: Math.max(0.01, t - 0.05), name: 'idle' });
       gKf.push({ t: inT, name: g });
@@ -300,7 +327,7 @@ function buildScheduleFallback(dur) {
   for (let k = 0; k < blinks.length; k++) if (k % 2 === 1) { eKf.push({ t: blinks[k], name: ESEQ[ei % ESEQ.length] }); ei++; }
   let tt = 2.5, gi = 0, prevG = 'idle';
   while (tt < dur) {
-    const g = (gi === 0) ? 'wave' : pickGesture(gi, prevG); prevG = g;
+    const g = (gi === 0) ? 'wave' : pickFromFamily(GFAM.default, gi, prevG); prevG = g;
     const hold = 1.1 + (gi % 3) * 0.3;
     gKf.push({ t: tt, name: 'idle' });
     gKf.push({ t: tt + 0.55, name: g });
