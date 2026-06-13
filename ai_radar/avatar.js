@@ -11,6 +11,8 @@ const f2 = n => n.toFixed(2);
 const lerp = (a, b, p) => a + (b - a) * p;
 const clamp = (v, lo, hi) => v < lo ? lo : (v > hi ? hi : v);
 const ease = p => p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+// antecipacao: leve retracao (-) antes de subir; depois sobe normal. A mola cuida do arremate.
+const easeAntic = p => p < 0.25 ? -0.12 * Math.sin(p / 0.25 * Math.PI) : ease((p - 0.25) / 0.75);
 const FR = 40;
 const THETA_MAX = rad(8);
 
@@ -216,10 +218,12 @@ function gestTargetAt(t, gKf) {
   let i = 0; for (let k = 0; k < gKf.length; k++) if (gKf[k].t <= t) i = k;
   const cur = GEST_RIG[gKf[i].name] || GEST_RIG.idle;
   const prev = GEST_RIG[gKf[Math.max(0, i - 1)].name] || GEST_RIG.idle;
-  const pe = ease(clamp((t - gKf[i].t) / 0.45, 0, 1));
+  const raw = clamp((t - gKf[i].t) / 0.45, 0, 1);
+  const pe = ease(raw);
+  const pa = easeAntic(raw); // bracos com antecipacao (leve retracao antes de subir)
   return {
-    armR_raise: lerp(prev.armR_raise, cur.armR_raise, pe),
-    armR_extend: lerp(prev.armR_extend, cur.armR_extend, pe),
+    armR_raise: lerp(prev.armR_raise, cur.armR_raise, pa),
+    armR_extend: lerp(prev.armR_extend, cur.armR_extend, pa),
     hand_open_R: lerp(prev.hand_open_R, cur.hand_open_R, pe)
   };
 }
@@ -403,6 +407,11 @@ function renderFrames(opts) {
       if (k.armR_raise != null) TaR[i] = k.armR_raise;
       if (k.armR_extend != null) TeR[i] = k.armR_extend;
     }
+    // intensidade pela voz (prosody): fala mais forte -> reacao maior (sobrancelha/pupila)
+    const emph = clamp((env[i] - 0.45) / 0.55, 0, 1);
+    r.brow_raise_L = clamp(r.brow_raise_L + 0.16 * emph, 0, 1);
+    r.brow_raise_R = clamp(r.brow_raise_R + 0.16 * emph, 0, 1);
+    r.pupil_dilate = clamp(r.pupil_dilate + 0.10 * emph, 0, 1);
     frameRig[i] = r;
   }
   // passo 2: aplica molas (overshoot na cabeca/bracos; antena segue a cabeca com atraso)
