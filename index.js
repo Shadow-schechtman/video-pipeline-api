@@ -303,7 +303,16 @@ app.post('/render', async (req, res) => {
           const exprDict = ET.loadDictForChannel(cor_legenda);
           if (exprDict) rigTrack = ET.buildRigTrack({ words: avatarWords, dur: audioDur, fps: AVATAR_FPS, dict: exprDict });
         } catch (e) { rigTrack = null; }
-        const nf = avatar.renderFrames({ wavPath: wavPath, fps: AVATAR_FPS, width: AVATAR_W, outDir: avDir, words: avatarWords, rigTrack: rigTrack });
+        // ESTAGIO 3 (lip-sync): se o Rhubarb estiver instalado, gera os visemes do WAV
+        // e passa pro renderer (substitui a boca por amplitude). Seguro: se faltar/falhar, cai na amplitude.
+        let visemes = null;
+        try {
+          const cuesPath = path.join(jobDir, 'cues.json');
+          const rec = (whisperLang === 'en') ? '' : ' -r phonetic';
+          execSync('rhubarb -f json' + rec + ' -o ' + cuesPath + ' ' + wavPath, { timeout: 180000 });
+          visemes = require('./ai_radar/visemes').parseRhubarb(JSON.parse(fs.readFileSync(cuesPath, 'utf8')));
+        } catch (e) { console.log('[viseme] lip-sync indisponivel neste render:', e.message); visemes = null; }
+        const nf = avatar.renderFrames({ wavPath: wavPath, fps: AVATAR_FPS, width: AVATAR_W, outDir: avDir, words: avatarWords, rigTrack: rigTrack, visemes: visemes });
         if (nf > 0) avFrames = path.join(avDir, 'av_%05d.png');
       } catch (e) {
         console.log('[avatar] desativado neste render (geracao de frames falhou):', e.message);
