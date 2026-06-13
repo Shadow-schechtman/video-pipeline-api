@@ -412,6 +412,8 @@ function renderFrames(opts) {
     r.pupil_dilate = clamp(r.pupil_dilate + 0.10 * emph, 0, 1);
     // nao fecha os olhos no sorriso enquanto fala (talk c/ liberacao lenta: so sorri em pausa real)
     r.eye_smile = r.eye_smile * (1 - 0.7 * clamp(talk[i] * 1.4, 0, 1));
+    // nao "trava" a boca num sorriso enquanto fala: o canto da boca relaxa com a voz (libera a articulacao)
+    r.mouth_corner = r.mouth_corner * (1 - 0.6 * clamp(talk[i] * 1.4, 0, 1));
     frameRig[i] = r;
   }
   // passo 2: aplica molas (overshoot na cabeca/bracos; antena segue a cabeca com atraso)
