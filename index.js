@@ -135,7 +135,8 @@ app.post('/render', async (req, res) => {
     await fs.ensureDir(jobDir);
     const { audio_url, video_clips, language, cor_legenda } = req.body;
     const assColor = hexToAss(cor_legenda);
-    console.log('[render] jobId:', jobId, '| cor_legenda recebida:', cor_legenda, '| ASS:', assColor, '| end card:', getEndCard(cor_legenda) ? getEndCard(cor_legenda).nome : '(nenhum)');
+    const mascote = avatarOn(cor_legenda); // com mascote -> legenda lateral; sem mascote -> centralizada (formato anterior)
+    console.log('[render] jobId:', jobId, '| cor_legenda recebida:', cor_legenda, '| ASS:', assColor, '| mascote:', mascote, '| end card:', getEndCard(cor_legenda) ? getEndCard(cor_legenda).nome : '(nenhum)');
 
     // Define idioma para o WhisperX — default pt
     const whisperLang = language ? language.substring(0, 2).toLowerCase() : 'pt';
@@ -161,33 +162,47 @@ app.post('/render', async (req, res) => {
     // 3. Le o JSON do WhisperX
     const whisperOutput = JSON.parse(fs.readFileSync(path.join(jobDir, 'audio.json'), 'utf8'));
 
-    // 4. Agrupa as palavras (legenda estilo amigo_dicas: 1 linha, poucas palavras)
-    // Legenda estilo amigo_dicas: UMA linha, agrupando quantas palavras couberem
-    // na coluna ao lado do mascote (palavra longa fica sozinha; 2-3 curtas juntas).
-    // O agrupamento respeita as pausas naturais (nao junta palavras de segmentos diferentes).
-    // CHARS_BUDGET reduzido de 12 -> 10: a linha cheia nasce mais estreita p/ nao
-    // tocar a coluna de UI da plataforma na direita (ver MarginR no estilo abaixo).
-    const WORDS_MAX = 3;        // teto de palavras por tela
-    const CHARS_BUDGET = 10;    // ~ largura da coluna lateral (caracteres); 10 evita a linha cheia sob a UI da direita
+    // 4. Agrupa as palavras conforme o layout do canal.
+    // - COM mascote (AI Radar): 1 linha curta na coluna lateral a direita do mascote
+    //   (agrupa por largura: palavra longa sozinha; 2-3 curtas juntas; ate WORDS_MAX).
+    // - SEM mascote: formato CENTRALIZADO anterior (segmentos naturais do WhisperX, ate
+    //   MAX_WORDS palavras, quebrando em 2 linhas no render -- ver separador \\N abaixo).
     const phrases = [];
-
-    if (whisperOutput.segments) {
-      for (const seg of whisperOutput.segments) {
-        if (!seg.words || seg.words.length === 0) continue;
-        let group = [];
-        let chars = 0;
-        for (const w of seg.words) {
-          const wl = (w.word || '').trim().length;
-          const projected = group.length ? (chars + 1 + wl) : wl;
-          if (group.length && (group.length >= WORDS_MAX || projected > CHARS_BUDGET)) {
-            phrases.push(group);
-            group = [];
-            chars = 0;
+    if (mascote) {
+      const WORDS_MAX = 3;        // teto de palavras por tela (coluna lateral)
+      const CHARS_BUDGET = 10;    // ~ largura da coluna lateral; 10 evita a linha cheia sob a UI da direita
+      if (whisperOutput.segments) {
+        for (const seg of whisperOutput.segments) {
+          if (!seg.words || seg.words.length === 0) continue;
+          let group = [];
+          let chars = 0;
+          for (const w of seg.words) {
+            const wl = (w.word || '').trim().length;
+            const projected = group.length ? (chars + 1 + wl) : wl;
+            if (group.length && (group.length >= WORDS_MAX || projected > CHARS_BUDGET)) {
+              phrases.push(group);
+              group = [];
+              chars = 0;
+            }
+            chars = group.length ? (chars + 1 + wl) : wl;
+            group.push(w);
           }
-          chars = group.length ? (chars + 1 + wl) : wl;
-          group.push(w);
+          if (group.length) phrases.push(group);
         }
-        if (group.length) phrases.push(group);
+      }
+    } else {
+      const MAX_WORDS = 5;        // centralizado anterior: segmentos naturais ate 5 palavras
+      if (whisperOutput.segments) {
+        for (const seg of whisperOutput.segments) {
+          if (!seg.words || seg.words.length === 0) continue;
+          if (seg.words.length <= MAX_WORDS) {
+            phrases.push(seg.words);
+          } else {
+            for (let i = 0; i < seg.words.length; i += MAX_WORDS) {
+              phrases.push(seg.words.slice(i, i + MAX_WORDS));
+            }
+          }
+        }
       }
     }
 
@@ -200,20 +215,21 @@ app.post('/render', async (req, res) => {
       return h + ':' + String(m).padStart(2, '0') + ':' + String(sc).padStart(2, '0') + '.' + String(cs).padStart(2, '0');
     }
 
-    // 6. Gera ASS estilo viral
-    // Legenda numa LINHA so, na coluna a direita do mascote (MarginL alto desloca o
-    // texto centralizado pra direita, liberando o canto onde fica o mascote). Karaoke
-    // mantido (palavra ativa na cor do canal, resto branco).
-    // MarginR 160 (era 100): puxa o texto centralizado ~40px p/ a esquerda, afastando
-    // a linha cheia da coluna de UI da plataforma (icones curtir/comentar/salvar).
-    // Janela horizontal segura resultante: ~[466, 920].
+    // 6. Gera ASS estilo viral. O estilo depende do layout do canal:
+    // - COM mascote: 1 linha na coluna a direita do mascote (fonte 72; MarginL=466 alto desloca
+    //   o texto centralizado pra direita; MarginR=160 afasta da UI da direita). Janela ~[466, 920].
+    // - SEM mascote: formato CENTRALIZADO anterior (fonte 98, contorno 5, margens simetricas
+    //   60/60, MarginV=880). Para baixar a legenda numa eventual versao sem mascote, reduzir MarginV.
     let assContent = '[Script Info]\n';
     assContent += 'ScriptType: v4.00+\n';
     assContent += 'PlayResX: 1080\n';
     assContent += 'PlayResY: 1920\n\n';
     assContent += '[V4+ Styles]\n';
     assContent += 'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n';
-    assContent += 'Style: Default,Arial,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,4,2,2,466,160,430,1\n\n';
+    const styleLine = mascote
+      ? 'Style: Default,Arial,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,4,2,2,466,160,430,1'
+      : 'Style: Default,Arial,98,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,5,2,2,60,60,880,1';
+    assContent += styleLine + '\n\n';
     assContent += '[Events]\n';
     assContent += 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n';
 
@@ -237,7 +253,9 @@ app.post('/render', async (req, res) => {
           } else {
             lineText += '{\\c&H00FFFFFF&\\b1}' + word + '{\\r}';
           }
-          if (wj < phraseWords.length - 1) {
+          if (!mascote && wj === 1 && phraseWords.length > 2) {
+            lineText += '\\N'; // centralizado anterior: quebra em 2 linhas apos a 2a palavra
+          } else if (wj < phraseWords.length - 1) {
             lineText += ' ';
           }
         }
