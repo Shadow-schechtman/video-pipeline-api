@@ -215,6 +215,9 @@ const GEST_RIG = {
   offer_up:   { armR_raise: 0.32, armR_extend: 0.38, hand_open_R: 0.9, hand_rot_R: -95 }, // palma p/ cima (oferta), dedos p/ cima
   side:       { armR_raise: 0.4, armR_extend: 0.5, hand_open_R: 0.25, hand_rot_R: -45 },  // mao de lado (casual)
   point_down: { armR_raise: 0.3, armR_extend: 0.45, hand_open_R: 0.15, hand_rot_R: 40 },  // dedos p/ baixo (indicar)
+  flat_out:   { armR_raise: 0.35, armR_extend: 0.55, hand_open_R: 1.0, hand_rot_R: -25 }, // palma aberta na horizontal (apresenta de lado)
+  fist_low:   { armR_raise: 0.3, armR_extend: 0.45, hand_open_R: 0.05, hand_rot_R: -10 }, // punho fechado, baixo (determinacao/enfase contida)
+  scoop:      { armR_raise: 0.32, armR_extend: 0.42, hand_open_R: 0.65, hand_rot_R: 70 }, // mao em concha p/ baixo-centro (referencia a tela)
   // --- braco esquerdo (aponta pra direita/centro, baixo) ---
   l_present: { armL_raise: 0.45, armL_extend: 0.55, hand_open_L: 0.95 }, // mao esquerda apresenta (baixo-centro)
   // --- dois bracos na MESMA direcao (direita) ---
@@ -247,12 +250,12 @@ function beatCue(beatIndex, t, words, dur) {
 }
 // Familia por cue. Direito (alto/preciso) + esquerdo e dois-bracos (baixo-centro, p/ direita):
 const GFAM = {
-  hook:     ['open', 'offer_up', 'both_open'],      // convidativo / energico (palma p/ cima convida)
-  stat:     ['point', 'chop', 'point_down'],         // assertivo / pontuado (point_down indica numero)
-  reveal:   ['both_present', 'present', 'offer_up'],  // apresentar / revelar (palma aberta)
-  suspense: ['beat_low', 'side', 'offer'],            // contido / tensao (mao de lado, casual)
-  payoff:   ['both_open', 'emphasize', 'wave'],       // comemorativo / fechamento (CTA)
-  default:  ['open', 'side', 'offer_up', 'l_present', 'both_open']
+  hook:     ['open', 'offer_up', 'both_open'],          // convidativo / energico (palma p/ cima convida)
+  stat:     ['point', 'chop', 'point_down'],             // assertivo / pontuado (point_down indica numero)
+  reveal:   ['both_present', 'present', 'flat_out'],      // apresentar / revelar (palma aberta na horizontal)
+  suspense: ['beat_low', 'side', 'fist_low', 'scoop', 'offer'], // contido / tensao: leque de mao BAIXA variada
+  payoff:   ['both_open', 'emphasize', 'wave'],           // comemorativo / fechamento (CTA)
+  default:  ['open', 'side', 'offer_up', 'l_present', 'flat_out']
 };
 // escolha DETERMINISTICA dentro da familia (passo 2, coprimo aos tamanhos 3 e 5 -> cobre todos
 // sem repetir o anterior). Render continua reproduzivel.
