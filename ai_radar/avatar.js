@@ -45,20 +45,22 @@ function fingers(wx, wy, base, spread, count, length) {
   }
   return s;
 }
-function hand(wx, wy, base, length, spread) {
+function hand(wx, wy, base, length, spread, mirror) {
   length = length || 20; spread = spread || 46;
-  return fingers(wx, wy, base, spread, 4, length) + fingers(wx, wy, base - 60, 0, 1, length * 0.7);
+  // polegar do lado oposto na mao ESPELHADA (esquerda); senao parecem duas maos direitas
+  const thumb = base + (mirror ? 60 : -60);
+  return fingers(wx, wy, base, spread, 4, length) + fingers(wx, wy, thumb, 0, 1, length * 0.7);
 }
 
 // ---------- braco parametrico ----------
 const UP_LEN = 24, FORE_LEN = 22;
-function armChain(sx, sy, shAng, elAng, handOpen) {
+function armChain(sx, sy, shAng, elAng, handOpen, mirror) {
   const sa = rad(shAng), ea = rad(elAng);
   const ex = sx + UP_LEN * Math.cos(sa), ey = sy + UP_LEN * Math.sin(sa);
   const wx = ex + FORE_LEN * Math.cos(ea), wy = ey + FORE_LEN * Math.sin(ea);
   const arm = '<path d="M' + f1(sx) + ',' + f1(sy) + ' Q' + f1(ex) + ',' + f1(ey) + ' ' + f1(wx) + ',' + f1(wy) + '" fill="none" stroke="' + C + '" stroke-width="3.2" stroke-linecap="round"/>';
   const spread = lerp(10, 58, clamp(handOpen, 0, 1));
-  return arm + hand(wx, wy, elAng, 20, spread);
+  return arm + hand(wx, wy, elAng, 20, spread, mirror);
 }
 const R_SH = [166, 150], L_SH = [54, 150];
 
@@ -70,8 +72,8 @@ function armsSvg(r) {
   const elR = lerp(96, -28, clamp(r.armR_extend, 0, 1));
   const shL = lerp(96, -20, clamp(r.armL_raise, 0, 1));
   const elL = lerp(84, -5, clamp(r.armL_extend, 0, 1));
-  return armChain(R_SH[0], R_SH[1], shR, elR, r.hand_open_R)
-    + armChain(L_SH[0], L_SH[1], shL, elL, r.hand_open_L);
+  return armChain(R_SH[0], R_SH[1], shR, elR, r.hand_open_R, false)
+    + armChain(L_SH[0], L_SH[1], shL, elL, r.hand_open_L, true);
 }
 
 // ---------- defs (gradientes 3D) ----------
