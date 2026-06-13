@@ -186,7 +186,7 @@ function frameSVG(r) {
 const EXPR_RIG = {
   neutral: { brow_raise_L: 0.25, brow_raise_R: 0.25, brow_angle_L: 0, brow_angle_R: 0, eye_smile: 0, eye_squint: 0, mouth_corner: 0, pupil_dilate: 0.5, head_roll: 0, body_squash: 0 },
   raised:  { brow_raise_L: 0.9, brow_raise_R: 0.9, brow_angle_L: 0.2, brow_angle_R: 0.2, eye_smile: 0, eye_squint: 0, mouth_corner: 0.1, pupil_dilate: 0.9, head_roll: 0, body_squash: -0.12 },
-  happy:   { brow_raise_L: 0.4, brow_raise_R: 0.4, brow_angle_L: 0, brow_angle_R: 0, eye_smile: 0.9, eye_squint: 0.1, mouth_corner: 0.8, pupil_dilate: 0.5, head_roll: 0.05, body_squash: 0.05 },
+  happy:   { brow_raise_L: 0.4, brow_raise_R: 0.4, brow_angle_L: 0, brow_angle_R: 0, eye_smile: 0.7, eye_squint: 0.1, mouth_corner: 0.8, pupil_dilate: 0.5, head_roll: 0.05, body_squash: 0.05 },
   curious: { brow_raise_L: 0.35, brow_raise_R: 0.65, brow_angle_L: 0.1, brow_angle_R: 0.35, eye_smile: 0, eye_squint: 0.1, mouth_corner: 0.1, pupil_dilate: 0.55, head_roll: 0.3, body_squash: 0 },
   focused: { brow_raise_L: 0.1, brow_raise_R: 0.1, brow_angle_L: -0.45, brow_angle_R: -0.45, eye_smile: 0, eye_squint: 0.45, mouth_corner: -0.05, pupil_dilate: 0.45, head_roll: -0.05, body_squash: 0 }
 };
@@ -412,6 +412,8 @@ function renderFrames(opts) {
     r.brow_raise_L = clamp(r.brow_raise_L + 0.16 * emph, 0, 1);
     r.brow_raise_R = clamp(r.brow_raise_R + 0.16 * emph, 0, 1);
     r.pupil_dilate = clamp(r.pupil_dilate + 0.10 * emph, 0, 1);
+    // nao fecha os olhos no sorriso (eye_smile) enquanto fala: olhos abrem quando ha voz
+    r.eye_smile = r.eye_smile * (1 - 0.7 * clamp(opn[i] * 1.4, 0, 1));
     frameRig[i] = r;
   }
   // passo 2: aplica molas (overshoot na cabeca/bracos; antena segue a cabeca com atraso)

@@ -9,14 +9,14 @@
 // Rhubarb (Preston Blair) A-H, X -> canais de boca do rig
 const SHAPES = {
   A: { mouth_open: 0.00, mouth_round: 0.00, mouth_width: 0.50 }, // M B P (fechada)
-  B: { mouth_open: 0.25, mouth_round: 0.00, mouth_width: 0.80 }, // EE / consoantes
-  C: { mouth_open: 0.55, mouth_round: 0.10, mouth_width: 0.70 }, // E / AE
+  B: { mouth_open: 0.40, mouth_round: 0.00, mouth_width: 0.80 }, // EE / consoantes
+  C: { mouth_open: 0.70, mouth_round: 0.10, mouth_width: 0.70 }, // E / AE
   D: { mouth_open: 1.00, mouth_round: 0.10, mouth_width: 0.70 }, // AA (aberta)
-  E: { mouth_open: 0.40, mouth_round: 0.60, mouth_width: 0.35 }, // AO / ER (arredondada)
-  F: { mouth_open: 0.30, mouth_round: 1.00, mouth_width: 0.20 }, // UW / OW / W (bico)
-  G: { mouth_open: 0.15, mouth_round: 0.00, mouth_width: 0.60 }, // F V (dentes)
-  H: { mouth_open: 0.40, mouth_round: 0.10, mouth_width: 0.60 }, // L
-  X: { mouth_open: 0.05, mouth_round: 0.00, mouth_width: 0.50 }  // descanso
+  E: { mouth_open: 0.50, mouth_round: 0.60, mouth_width: 0.35 }, // AO / ER (arredondada)
+  F: { mouth_open: 0.45, mouth_round: 1.00, mouth_width: 0.20 }, // UW / OW / W (bico)
+  G: { mouth_open: 0.28, mouth_round: 0.00, mouth_width: 0.60 }, // F V (dentes)
+  H: { mouth_open: 0.55, mouth_round: 0.10, mouth_width: 0.60 }, // L
+  X: { mouth_open: 0.08, mouth_round: 0.00, mouth_width: 0.50 }  // descanso
 };
 // nomes do conjunto do schema tambem aceitos
 const ALIASES = { A_closed_MBP: 'A', B_EE: 'B', C_AA: 'D', D_O: 'E', E_U_W: 'F', F_FV: 'G', G_L: 'H', H_rest: 'X' };
@@ -45,7 +45,7 @@ function buildVisemeTrack(cues, fps, dur) {
   }
   // coarticulacao: attack/release (slow-in/out) p/ transicoes suaves
   const smooth = (arr, kUp, kDn) => { let p = arr[0] || 0; for (let i = 0; i < arr.length; i++) { const k = arr[i] > p ? kUp : kDn; p = p + k * (arr[i] - p); arr[i] = p; } return arr; };
-  smooth(to, 0.55, 0.30); smooth(tr, 0.45, 0.30); smooth(tw, 0.45, 0.35);
+  smooth(to, 0.70, 0.32); smooth(tr, 0.50, 0.30); smooth(tw, 0.45, 0.35);
   const track = new Array(nf);
   for (let i = 0; i < nf; i++) track[i] = { mouth_open: to[i], mouth_round: tr[i], mouth_width: tw[i] };
   return track;
