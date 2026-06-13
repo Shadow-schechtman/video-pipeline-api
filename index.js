@@ -219,7 +219,7 @@ app.post('/render', async (req, res) => {
     // - COM mascote: 1 linha na coluna a direita do mascote (fonte 72; MarginL=466 alto desloca
     //   o texto centralizado pra direita; MarginR=160 afasta da UI da direita). Janela ~[466, 920].
     // - SEM mascote: formato CENTRALIZADO anterior (fonte 98, contorno 5, margens simetricas
-    //   60/60, MarginV=880). Para baixar a legenda numa eventual versao sem mascote, reduzir MarginV.
+    //   60/60, MarginV=760). Para descer/subir a legenda sem mascote, reduzir/aumentar MarginV.
     let assContent = '[Script Info]\n';
     assContent += 'ScriptType: v4.00+\n';
     assContent += 'PlayResX: 1080\n';
@@ -228,7 +228,7 @@ app.post('/render', async (req, res) => {
     assContent += 'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n';
     const styleLine = mascote
       ? 'Style: Default,Arial,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,4,2,2,466,160,430,1'
-      : 'Style: Default,Arial,98,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,5,2,2,60,60,880,1';
+      : 'Style: Default,Arial,98,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,5,2,2,60,60,760,1';
     assContent += styleLine + '\n\n';
     assContent += '[Events]\n';
     assContent += 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n';
