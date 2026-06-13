@@ -308,8 +308,20 @@ app.post('/render', async (req, res) => {
         let visemes = null;
         try {
           const cuesPath = path.join(jobDir, 'cues.json');
-          const rec = (whisperLang === 'en') ? '' : ' -r phonetic';
-          execSync('rhubarb -f json' + rec + ' -o ' + cuesPath + ' ' + wavPath, { timeout: 180000 });
+          let recFlag = ' -r phonetic'; // padrao: independente de idioma
+          let dlgFlag = '';
+          if (whisperLang === 'en') {
+            // EN: reconhecedor nativo (pocketSphinx) + TEXTO da narracao (-d), que casa
+            // os fonemas com as palavras e deixa a boca nitidamente mais precisa.
+            recFlag = '';
+            const dialogText = (whisperOutput.segments || []).map(s => (s.text || '').trim()).join(' ').trim();
+            if (dialogText) {
+              const dlgPath = path.join(jobDir, 'dialog.txt');
+              fs.writeFileSync(dlgPath, dialogText);
+              dlgFlag = ' -d ' + dlgPath;
+            }
+          }
+          execSync('rhubarb -f json' + recFlag + dlgFlag + ' -o ' + cuesPath + ' ' + wavPath, { timeout: 180000 });
           visemes = require('./ai_radar/visemes').parseRhubarb(JSON.parse(fs.readFileSync(cuesPath, 'utf8')));
         } catch (e) { console.log('[viseme] lip-sync indisponivel neste render:', e.message); visemes = null; }
         const nf = avatar.renderFrames({ wavPath: wavPath, fps: AVATAR_FPS, width: AVATAR_W, outDir: avDir, words: avatarWords, rigTrack: rigTrack, visemes: visemes });
