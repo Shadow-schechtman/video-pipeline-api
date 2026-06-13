@@ -222,7 +222,9 @@ const GEST_RIG = {
   l_present: { armL_raise: 0.45, armL_extend: 0.55, hand_open_L: 0.95 }, // mao esquerda apresenta (baixo-centro)
   // --- dois bracos na MESMA direcao (direita) ---
   both_open:    { armR_raise: 0.6, armR_extend: 0.72, hand_open_R: 1.0, armL_raise: 0.5, armL_extend: 0.55, hand_open_L: 1.0 },  // dois abertos p/ direita
-  both_present: { armR_raise: 0.5, armR_extend: 0.6, hand_open_R: 0.95, armL_raise: 0.4, armL_extend: 0.5, hand_open_L: 0.95 }   // dois apresentando p/ direita
+  both_present: { armR_raise: 0.5, armR_extend: 0.6, hand_open_R: 0.95, armL_raise: 0.4, armL_extend: 0.5, hand_open_L: 0.95 },  // dois apresentando p/ direita
+  // dois bracos SINALIZANDO p/ a direita: maos na horizontal, paralelas, apontando o lado direito (->)
+  both_side:    { armR_raise: 0.55, armR_extend: 0.62, hand_open_R: 0.4, hand_rot_R: -15, armL_raise: 0.5, armL_extend: 0.58, hand_open_L: 0.4, hand_rot_L: 27 }
 };
 
 // ===== HEURISTICA DE GESTO POR CONTEXTO =====
@@ -252,10 +254,10 @@ function beatCue(beatIndex, t, words, dur) {
 const GFAM = {
   hook:     ['open', 'offer_up', 'both_open'],          // convidativo / energico (palma p/ cima convida)
   stat:     ['point', 'chop', 'point_down'],             // assertivo / pontuado (point_down indica numero)
-  reveal:   ['both_present', 'present', 'flat_out'],      // apresentar / revelar (palma aberta na horizontal)
+  reveal:   ['both_present', 'present', 'flat_out', 'both_side', 'offer_up'], // apresentar / revelar (inclui sinalizar p/ direita)
   suspense: ['beat_low', 'side', 'fist_low', 'scoop', 'offer'], // contido / tensao: leque de mao BAIXA variada
   payoff:   ['both_open', 'emphasize', 'wave'],           // comemorativo / fechamento (CTA)
-  default:  ['open', 'side', 'offer_up', 'l_present', 'flat_out']
+  default:  ['open', 'side', 'both_side', 'l_present', 'flat_out']
 };
 // escolha DETERMINISTICA dentro da familia (passo 2, coprimo aos tamanhos 3 e 5 -> cobre todos
 // sem repetir o anterior). Render continua reproduzivel.
@@ -452,6 +454,7 @@ function renderFrames(opts) {
   // passo 1: amostra os ALVOS por frame
   const Tp = new Array(nf), Ty = new Array(nf), Tr = new Array(nf), TaR = new Array(nf), TeR = new Array(nf), TaL = new Array(nf), TeL = new Array(nf);
   const frameRig = new Array(nf);
+  const alertArr = new Array(nf); let sweepPhase = 0; // item 4: empolgacao por frame + fase do radar acumulada
   for (let i = 0; i < nf; i++) {
     const t = i / fps;
     const ex = exprTargetAt(t, eKf), ge = gestTargetAt(t, gKf), gz = gazeAt(t, eKf), eo = eyeAt(t);
@@ -482,11 +485,17 @@ function renderFrames(opts) {
     r.brow_micro = 0.4 * opn[i] + 0.25 * Math.sin(2 * Math.PI * t / 4 + 1);
     r.body_bob = 1.6 * Math.sin(2 * Math.PI * t / 3) + 0.4 * Math.sin(2 * Math.PI * t / 7 + 1);
     r.body_sway = 2.0 * Math.sin(2 * Math.PI * t / 9 + 0.5);
-    r.radar_sweep = (t * 72) % 360;
+    // item 4: "empolgacao" = energia da voz + sobrancelha levantada (hook/raised). Acelera o radar.
+    const alert = clamp(0.5 * emph + 0.7 * clamp((ex.brow_raise_R - 0.25) / 0.65, 0, 1), 0, 1);
+    alertArr[i] = alert;
+    sweepPhase += (72 + 170 * alert) / fps; r.radar_sweep = sweepPhase % 360;
     r.hand_open_R = ge.hand_open_R; r.hand_open_L = ge.hand_open_L;
     r.hand_rot_R = ge.hand_rot_R; r.hand_rot_L = ge.hand_rot_L;
     Tp[i] = nodTarget(t, nods); Ty[i] = lerp(headYaw(t) + 0.06 * Math.sin(2 * Math.PI * t / 8), lookX, engG * 0.55); Tr[i] = ex.head_roll + 0.05 * Math.sin(2 * Math.PI * t / 6.5 + 2);
-    TaR[i] = ge.armR_raise; TeR[i] = ge.armR_extend; TaL[i] = ge.armL_raise; TeL[i] = ge.armL_extend;
+    // item 3: vida no HOLD - micro-oscilacao no alvo do braco (a mola suaviza); escala c/ engajamento, 0 em repouso
+    const brR = 0.020 * engR * Math.sin(2 * Math.PI * t / 0.90), brRe = 0.025 * engR * Math.sin(2 * Math.PI * t / 1.15 + 0.7);
+    const brL = 0.020 * engL * Math.sin(2 * Math.PI * t / 0.95 + 1.3), brLe = 0.025 * engL * Math.sin(2 * Math.PI * t / 1.20 + 2.0);
+    TaR[i] = clamp(ge.armR_raise + brR, 0, 1); TeR[i] = clamp(ge.armR_extend + brRe, 0, 1); TaL[i] = clamp(ge.armL_raise + brL, 0, 1); TeL[i] = clamp(ge.armL_extend + brLe, 0, 1);
     // viseme da a FORMA da boca; a amplitude garante uma abertura minima (nunca fica chapada quando ha voz)
     if (visTrack && visTrack[i]) { r.mouth_open = Math.max(visTrack[i].mouth_open, opn[i]); r.mouth_round = visTrack[i].mouth_round; r.mouth_width = visTrack[i].mouth_width; }
     if (rigTrack && rigTrack[i]) {
@@ -520,7 +529,7 @@ function renderFrames(opts) {
   for (let i = 0; i < nf; i++) {
     const r = frameRig[i];
     r.head_pitch = spP[i]; r.head_yaw = spY[i]; r.head_roll = spR[i];
-    r.armR_raise = spAR[i]; r.armR_extend = spER[i]; r.dish_tilt = spDish[i];
+    r.armR_raise = spAR[i]; r.armR_extend = spER[i]; r.dish_tilt = clamp(spDish[i] + 0.5 * alertArr[i], -1, 1);
     r.armL_raise = spAL[i]; r.armL_extend = spEL[i];
   }
   // passo 3: render
