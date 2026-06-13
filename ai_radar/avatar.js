@@ -63,7 +63,7 @@ function armChain(sx, sy, shAng, elAng, handOpen) {
 const R_SH = [166, 150], L_SH = [54, 150];
 
 // raise/extend normalizados (0..1) -> angulos (idle -> elevado), faixas das poses originais.
-// Mascote no canto esq.: braco direito gesticula pra direita; esquerdo descansa recolhido.
+// Mascote no canto esq.: braco direito gesticula pra direita; esquerdo agora tambem gesticula pra esquerda.
 function armsSvg(r) {
   const shR = lerp(84, -24, clamp(r.armR_raise, 0, 1));
   const elR = lerp(96, -28, clamp(r.armR_extend, 0, 1));
@@ -160,7 +160,7 @@ function face(r) {
   const sq = clamp(r.eye_squint, 0, 1);
   const oL = clamp(r.eye_open_L, 0, 1) * (1 - 0.55 * sq);
   const oR = clamp(r.eye_open_R, 0, 1) * (1 - 0.55 * sq);
-  // crossfade ESTREITO [0.4,0.6]: fora dessa faixa desenha so um estilo de olho (sem "fantasma" redondo+sorriso)
+  // crossfade ESTREITO [0.4,0.6]: fora dessa faixa desenha so um estilo de olho (sem fantasma redondo+sorriso)
   const smile = clamp((clamp(r.eye_smile, 0, 1) - 0.4) / 0.2, 0, 1);
   if (smile < 0.98) s += '<g opacity="' + f2(1 - smile) + '">' + eyeRound(le.x, oL, 1.0, le.s, r) + eyeRound(re.x, oR, 1.0, re.s, r) + '</g>';
   if (smile > 0.02) s += '<g opacity="' + f2(smile) + '">' + eyeHappy(le.x, Math.max(oL, 0.3), le.s) + eyeHappy(re.x, Math.max(oR, 0.3), re.s) + '</g>';
@@ -192,13 +192,33 @@ const EXPR_RIG = {
   focused: { brow_raise_L: 0.1, brow_raise_R: 0.1, brow_angle_L: -0.45, brow_angle_R: -0.45, eye_smile: 0, eye_squint: 0.45, mouth_corner: -0.05, pupil_dilate: 0.45, head_roll: -0.05, body_squash: 0 }
 };
 const GEST_RIG = {
-  idle:      { armR_raise: 0, armR_extend: 0, hand_open_R: 0.5 },
-  wave:      { armR_raise: 0.95, armR_extend: 1.0, hand_open_R: 0.9 },
-  point:     { armR_raise: 0.98, armR_extend: 0.95, hand_open_R: 0.1 },
-  open:      { armR_raise: 0.6, armR_extend: 0.72, hand_open_R: 1.0 },
-  present:   { armR_raise: 0.5, armR_extend: 0.6, hand_open_R: 0.95 },
-  emphasize: { armR_raise: 0.78, armR_extend: 0.86, hand_open_R: 0.35 }
+  idle:        { armR_raise: 0, armR_extend: 0, hand_open_R: 0.5, armL_raise: 0, armL_extend: 0, hand_open_L: 0.5 },
+  // --- braco direito ---
+  wave:        { armR_raise: 0.95, armR_extend: 1.0, hand_open_R: 0.9 },
+  point:       { armR_raise: 0.98, armR_extend: 0.95, hand_open_R: 0.1 },
+  open:        { armR_raise: 0.6, armR_extend: 0.72, hand_open_R: 1.0 },
+  present:     { armR_raise: 0.5, armR_extend: 0.6, hand_open_R: 0.95 },
+  emphasize:   { armR_raise: 0.78, armR_extend: 0.86, hand_open_R: 0.35 },
+  chop:        { armR_raise: 0.55, armR_extend: 0.95, hand_open_R: 0.25 },
+  offer:       { armR_raise: 0.32, armR_extend: 0.38, hand_open_R: 1.0 },
+  // --- braco esquerdo (espelha o direito do outro lado) ---
+  l_present:   { armL_raise: 0.5, armL_extend: 0.6, hand_open_L: 0.95 },
+  l_open:      { armL_raise: 0.6, armL_extend: 0.72, hand_open_L: 1.0 },
+  l_point:     { armL_raise: 0.85, armL_extend: 0.7, hand_open_L: 0.1 },
+  // --- dois bracos (simetrico) ---
+  both_up:     { armR_raise: 1.0, armR_extend: 0.6, hand_open_R: 0.6, armL_raise: 0.95, armL_extend: 0.6, hand_open_L: 0.6 },
+  both_open:   { armR_raise: 0.6, armR_extend: 0.72, hand_open_R: 1.0, armL_raise: 0.6, armL_extend: 0.72, hand_open_L: 1.0 },
+  welcome:     { armR_raise: 0.7, armR_extend: 0.9, hand_open_R: 0.9, armL_raise: 0.7, armL_extend: 0.9, hand_open_L: 0.9 }
 };
+// pool de gestos sorteados no meio do video (wave fica reservado p/ a saudacao inicial)
+const GPOOL = ['point', 'open', 'present', 'emphasize', 'chop', 'offer', 'l_present', 'l_open', 'l_point', 'both_up', 'both_open', 'welcome'];
+// escolha DETERMINISTICA (render reproduzivel) com passo coprimo ao tamanho do pool:
+// percorre TODOS os gestos em ordem embaralhada, sem repetir o anterior.
+function pickGesture(idx, prev) {
+  let g = GPOOL[(idx * 5) % GPOOL.length];
+  if (g === prev) g = GPOOL[(idx * 5 + 1) % GPOOL.length];
+  return g;
+}
 const EXPR_KEYS = ['brow_raise_L', 'brow_raise_R', 'brow_angle_L', 'brow_angle_R', 'eye_smile', 'eye_squint', 'mouth_corner', 'pupil_dilate', 'head_roll', 'body_squash'];
 // canais que um TRACK (viseme estagio 3 / dicionario minerado estagio 5) sobrepoe DIRETO no frame.
 // canais com mola (head_pitch/yaw/roll, armR_*) sao tratados ajustando o ALVO antes da mola.
@@ -222,10 +242,14 @@ function gestTargetAt(t, gKf) {
   const raw = clamp((t - gKf[i].t) / 0.45, 0, 1);
   const pe = ease(raw);
   const pa = easeAntic(raw); // bracos com antecipacao (leve retracao antes de subir)
+  const gv = (o, k, d) => (o[k] != null ? o[k] : d); // pose sem o canal -> repouso
   return {
-    armR_raise: lerp(prev.armR_raise, cur.armR_raise, pa),
-    armR_extend: lerp(prev.armR_extend, cur.armR_extend, pa),
-    hand_open_R: lerp(prev.hand_open_R, cur.hand_open_R, pe)
+    armR_raise: lerp(gv(prev, 'armR_raise', 0), gv(cur, 'armR_raise', 0), pa),
+    armR_extend: lerp(gv(prev, 'armR_extend', 0), gv(cur, 'armR_extend', 0), pa),
+    hand_open_R: lerp(gv(prev, 'hand_open_R', 0.5), gv(cur, 'hand_open_R', 0.5), pe),
+    armL_raise: lerp(gv(prev, 'armL_raise', 0), gv(cur, 'armL_raise', 0), pa),
+    armL_extend: lerp(gv(prev, 'armL_extend', 0), gv(cur, 'armL_extend', 0), pa),
+    hand_open_L: lerp(gv(prev, 'hand_open_L', 0.5), gv(cur, 'hand_open_L', 0.5), pe)
   };
 }
 
@@ -237,20 +261,22 @@ function buildSchedule(words, dur) {
     if (i === 0 || (w.start - prevEnd) > GAP) beats.push(w.start);
     prevEnd = (w.end != null ? w.end : w.start);
   }
-  const GSEQ = ['wave', 'point', 'open', 'present', 'emphasize'], ESEQ = ['curious', 'focused', 'neutral', 'raised'];
+  const ESEQ = ['curious', 'focused', 'neutral', 'raised'];
   const eKf = [{ t: 0, name: 'neutral' }], gKf = [{ t: 0, name: 'idle' }]; let blinks = [];
-  let gi = 0, lastG = -99;
+  let gi = 0, lastG = -99, prevG = 'idle';
   for (let b = 0; b < beats.length; b++) {
     const t = beats[b]; let name;
     if (b === 0) name = 'raised'; else if (t > dur * 0.80) name = 'happy'; else name = ESEQ[b % ESEQ.length];
     eKf.push({ t: t, name: name }); blinks.push(t);
-    if (t - lastG > 2.3) {
-      const g = (b === 0) ? 'wave' : GSEQ[gi % GSEQ.length]; gi++;
+    const minGap = 2.1 + (gi % 2) * 0.6; // espacamento entre gestos varia (nao metronomico)
+    if (t - lastG > minGap) {
+      const g = (b === 0) ? 'wave' : pickGesture(gi, prevG); prevG = g;
+      const inT = t + 0.45, hold = 1.0 + (gi % 3) * 0.28, outT = inT + hold; // duracao do gesto varia
       gKf.push({ t: Math.max(0.01, t - 0.05), name: 'idle' });
-      gKf.push({ t: t + 0.45, name: g });
-      gKf.push({ t: t + 1.40, name: g });
-      gKf.push({ t: t + 1.90, name: 'idle' });
-      lastG = t;
+      gKf.push({ t: inT, name: g });
+      gKf.push({ t: outT, name: g });
+      gKf.push({ t: outT + 0.5, name: 'idle' });
+      lastG = t; gi++;
     }
   }
   gKf.push({ t: dur + 1, name: 'idle' });
@@ -272,13 +298,15 @@ function buildScheduleFallback(dur) {
   for (let tb = 1.4; tb < dur; tb += 3.0) blinks.push(tb);
   const ESEQ = ['neutral', 'curious', 'focused', 'raised']; let ei = 0;
   for (let k = 0; k < blinks.length; k++) if (k % 2 === 1) { eKf.push({ t: blinks[k], name: ESEQ[ei % ESEQ.length] }); ei++; }
-  const GSEQ = ['wave', 'point', 'open', 'present', 'emphasize']; let tt = 2.5, gi = 0;
+  let tt = 2.5, gi = 0, prevG = 'idle';
   while (tt < dur) {
+    const g = (gi === 0) ? 'wave' : pickGesture(gi, prevG); prevG = g;
+    const hold = 1.1 + (gi % 3) * 0.3;
     gKf.push({ t: tt, name: 'idle' });
-    gKf.push({ t: tt + 0.55, name: GSEQ[gi % GSEQ.length] });
-    gKf.push({ t: tt + 1.7, name: GSEQ[gi % GSEQ.length] });
-    gKf.push({ t: tt + 2.3, name: 'idle' });
-    tt += 4.6; gi++;
+    gKf.push({ t: tt + 0.55, name: g });
+    gKf.push({ t: tt + 0.55 + hold, name: g });
+    gKf.push({ t: tt + 0.55 + hold + 0.5, name: 'idle' });
+    tt += 3.8 + (gi % 2) * 0.8; gi++;
   }
   gKf.push({ t: dur + 1, name: 'idle' });
   blinks.sort((a, b) => a - b);
@@ -374,7 +402,7 @@ function renderFrames(opts) {
   const eyeAt = t => { let e = 1; for (const tb of blinks) e = Math.min(e, 1 - Math.exp(-Math.pow((t - tb) / 0.07, 2))); return Math.max(0, e); };
 
   // passo 1: amostra os ALVOS por frame
-  const Tp = new Array(nf), Ty = new Array(nf), Tr = new Array(nf), TaR = new Array(nf), TeR = new Array(nf);
+  const Tp = new Array(nf), Ty = new Array(nf), Tr = new Array(nf), TaR = new Array(nf), TeR = new Array(nf), TaL = new Array(nf), TeL = new Array(nf);
   const frameRig = new Array(nf);
   for (let i = 0; i < nf; i++) {
     const t = i / fps;
@@ -391,10 +419,10 @@ function renderFrames(opts) {
     r.body_bob = 1.6 * Math.sin(2 * Math.PI * t / 3) + 0.4 * Math.sin(2 * Math.PI * t / 7 + 1);
     r.body_sway = 2.0 * Math.sin(2 * Math.PI * t / 9 + 0.5);
     r.radar_sweep = (t * 72) % 360;
-    r.hand_open_R = ge.hand_open_R;
+    r.hand_open_R = ge.hand_open_R; r.hand_open_L = ge.hand_open_L;
     Tp[i] = nodTarget(t, nods); Ty[i] = headYaw(t) + 0.06 * Math.sin(2 * Math.PI * t / 8); Tr[i] = ex.head_roll + 0.05 * Math.sin(2 * Math.PI * t / 6.5 + 2);
-    TaR[i] = ge.armR_raise; TeR[i] = ge.armR_extend;
-    // viseme da a FORMA da boca; a amplitude garante uma abertura minima (nunca "chapada" quando ha voz)
+    TaR[i] = ge.armR_raise; TeR[i] = ge.armR_extend; TaL[i] = ge.armL_raise; TeL[i] = ge.armL_extend;
+    // viseme da a FORMA da boca; a amplitude garante uma abertura minima (nunca fica chapada quando ha voz)
     if (visTrack && visTrack[i]) { r.mouth_open = Math.max(visTrack[i].mouth_open, opn[i]); r.mouth_round = visTrack[i].mouth_round; r.mouth_width = visTrack[i].mouth_width; }
     if (rigTrack && rigTrack[i]) {
       const k = rigTrack[i];
@@ -412,7 +440,7 @@ function renderFrames(opts) {
     r.pupil_dilate = clamp(r.pupil_dilate + 0.10 * emph, 0, 1);
     // nao fecha os olhos no sorriso enquanto fala (talk c/ liberacao lenta: so sorri em pausa real)
     r.eye_smile = r.eye_smile * (1 - 0.7 * clamp(talk[i] * 1.4, 0, 1));
-    // nao "trava" a boca num sorriso enquanto fala: o canto da boca relaxa com a voz (libera a articulacao)
+    // nao trava a boca num sorriso enquanto fala: o canto da boca relaxa com a voz (libera a articulacao)
     r.mouth_corner = r.mouth_corner * (1 - 0.6 * clamp(talk[i] * 1.4, 0, 1));
     frameRig[i] = r;
   }
@@ -422,11 +450,14 @@ function renderFrames(opts) {
   const spR = springTrack(Tr, fps, 14, 0.55);
   const spAR = springTrack(TaR, fps, 13, 0.50);
   const spER = springTrack(TeR, fps, 13, 0.50);
+  const spAL = springTrack(TaL, fps, 13, 0.50);
+  const spEL = springTrack(TeL, fps, 13, 0.50);
   const spDish = springTrack(spY, fps, 9, 0.70);
   for (let i = 0; i < nf; i++) {
     const r = frameRig[i];
     r.head_pitch = spP[i]; r.head_yaw = spY[i]; r.head_roll = spR[i];
     r.armR_raise = spAR[i]; r.armR_extend = spER[i]; r.dish_tilt = spDish[i];
+    r.armL_raise = spAL[i]; r.armL_extend = spEL[i];
   }
   // passo 3: render
   for (let i = 0; i < nf; i++) {
