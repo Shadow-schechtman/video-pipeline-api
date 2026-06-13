@@ -1,6 +1,7 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 // ---- paleta / constantes do desenho (inalteradas) ----
 const C = '#00C2FF', EYE = '#EAF6FF', PUP = '#06182A', WHT = '#FFFFFF';
@@ -542,13 +543,19 @@ function renderFrames(opts) {
     r.armR_raise = spAR[i]; r.armR_extend = spER[i]; r.dish_tilt = clamp(spDish[i] + 0.5 * alertArr[i], -1, 1);
     r.armL_raise = spAL[i]; r.armL_extend = spEL[i];
   }
-  // passo 3: render
+  // passo 3: render. Escreve TODOS os SVG, depois converte em PARALELO (rsvg-convert via xargs -P)
+  // e por fim preenche SEQUENCIALMENTE qualquer PNG que falte. Isso cobre xargs ausente (tudo
+  // faltando -> tudo sequencial) e falhas parciais. renderFrames continua SINCRONO; nunca perde o mascote.
+  const pad = i => String(i).padStart(5, '0');
+  for (let i = 0; i < nf; i++) fs.writeFileSync(path.join(outDir, 's_' + pad(i) + '.svg'), frameSVG(frameRig[i]));
+  const conc = Math.max(1, Math.min(8, os.cpus().length || 1));
+  try {
+    const par = 'cd "' + outDir + '" && ls s_*.svg | xargs -P ' + conc + ' -I{} sh -c \'i="$1"; o="av_${i#s_}"; o="${o%.svg}.png"; rsvg-convert -w ' + width + ' "$i" -o "$o"\' _ {}';
+    execSync(par, { timeout: Math.max(180000, nf * 200), shell: '/bin/sh' });
+  } catch (e) { /* paralelo indisponivel (ex.: sem xargs); o preenchimento abaixo cobre tudo */ }
   for (let i = 0; i < nf; i++) {
-    const svg = frameSVG(frameRig[i]);
-    const sp = path.join(outDir, 's_' + String(i).padStart(5, '0') + '.svg');
-    const pp = path.join(outDir, 'av_' + String(i).padStart(5, '0') + '.png');
-    fs.writeFileSync(sp, svg);
-    execSync('rsvg-convert -w ' + width + ' ' + sp + ' -o ' + pp, { timeout: 30000 });
+    const pp = path.join(outDir, 'av_' + pad(i) + '.png');
+    if (!fs.existsSync(pp)) execSync('rsvg-convert -w ' + width + ' ' + path.join(outDir, 's_' + pad(i) + '.svg') + ' -o ' + pp, { timeout: 30000 });
   }
   return nf;
 }
